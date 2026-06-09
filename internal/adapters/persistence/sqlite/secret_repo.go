@@ -347,31 +347,31 @@ func (r *SecretRepo) UpdateAttributes(ctx context.Context, vaultID, name, versio
 		enabled = 0
 	}
 
-	parts := []string{"sv.enabled=?", "sv.updated=?"}
+	parts := []string{"enabled=?", "updated=?"}
 	args := []any{enabled, now}
 
 	if contentType != nil {
-		parts = append(parts, "sv.content_type=?")
+		parts = append(parts, "content_type=?")
 		args = append(args, nullStr(*contentType))
 	}
 	if tags != nil {
-		parts = append(parts, "sv.tags_json=?")
+		parts = append(parts, "tags_json=?")
 		args = append(args, nullStr(marshalTags(tags)))
 	}
 	if attrs.NotBefore != nil {
-		parts = append(parts, "sv.nbf=?")
+		parts = append(parts, "nbf=?")
 		args = append(args, *attrs.NotBefore)
 	}
 	if attrs.Expires != nil {
-		parts = append(parts, "sv.exp=?")
+		parts = append(parts, "exp=?")
 		args = append(args, *attrs.Expires)
 	}
 
 	args = append(args, vaultID, name, version)
-	q := `UPDATE secret_version sv
+	q := `UPDATE secret_version
 		  SET ` + strings.Join(parts, ", ") + `
-		  WHERE sv.secret_id=(SELECT id FROM secret WHERE vault_id=? AND name=? AND deleted_at IS NULL)
-		  AND sv.version=?`
+		  WHERE secret_id=(SELECT id FROM secret WHERE vault_id=? AND name=? AND deleted_at IS NULL)
+		  AND version=?`
 
 	res, err := r.db.ExecContext(ctx, q, args...)
 	if err != nil {

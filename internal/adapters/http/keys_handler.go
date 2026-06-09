@@ -314,9 +314,9 @@ func (h *KeyHandlers) Sign(w http.ResponseWriter, r *http.Request) {
 func (h *KeyHandlers) Verify(w http.ResponseWriter, r *http.Request) {
 	name, version := chi.URLParam(r, "name"), chi.URLParam(r, "version")
 	var body struct {
-		Alg   string `json:"alg"`
-		Digest string `json:"value"`
-		Signature string `json:"signature"`
+		Alg       string `json:"alg"`
+		Digest    string `json:"digest"` // SHA-256 do dado original, em base64url
+		Signature string `json:"value"`  // assinatura a verificar, em base64url
 	}
 	json.NewDecoder(r.Body).Decode(&body)
 	data, _ := base64.RawURLEncoding.DecodeString(body.Digest)
