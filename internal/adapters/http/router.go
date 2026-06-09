@@ -17,6 +17,7 @@ type RouterConfig struct {
 	TenantID   string
 	AADKey     *kvCrypto.AADKey
 	AuthStrict bool
+	Secrets    *SecretHandlers
 }
 
 func NewRouter(cfg RouterConfig) http.Handler {
@@ -43,23 +44,44 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Use(middleware.Auth(cfg.AADKey, cfg.AuthStrict))
 
 		// Secrets
-		r.Route("/secrets", func(r chi.Router) {
-			r.Get("/", secretsListHandler)
-			r.Put("/{name}", secretSetHandler)
-			r.Get("/{name}", secretGetHandler)
-			r.Get("/{name}/{version}", secretGetHandler)
-			r.Get("/{name}/versions", secretListVersionsHandler)
-			r.Patch("/{name}/{version}", secretUpdateHandler)
-			r.Delete("/{name}", secretDeleteHandler)
-			r.Post("/{name}/backup", secretBackupHandler)
-			r.Post("/restore", secretRestoreHandler)
-		})
-		r.Route("/deletedsecrets", func(r chi.Router) {
-			r.Get("/", deletedSecretsListHandler)
-			r.Get("/{name}", deletedSecretGetHandler)
-			r.Post("/{name}/recover", secretRecoverHandler)
-			r.Delete("/{name}", secretPurgeHandler)
-		})
+		if cfg.Secrets != nil {
+			sh := cfg.Secrets
+			r.Route("/secrets", func(r chi.Router) {
+				r.Get("/", sh.List)
+				r.Put("/{name}", sh.Set)
+				r.Post("/restore", sh.Restore)
+				r.Post("/{name}/backup", sh.Backup)
+				r.Get("/{name}/versions", sh.ListVersions)
+				r.Get("/{name}/{version}", sh.Get)
+				r.Get("/{name}", sh.Get)
+				r.Patch("/{name}/{version}", sh.Update)
+				r.Delete("/{name}", sh.Delete)
+			})
+			r.Route("/deletedsecrets", func(r chi.Router) {
+				r.Get("/", sh.ListDeleted)
+				r.Get("/{name}", sh.GetDeleted)
+				r.Post("/{name}/recover", sh.Recover)
+				r.Delete("/{name}", sh.Purge)
+			})
+		} else {
+			r.Route("/secrets", func(r chi.Router) {
+				r.Get("/", secretsListHandler)
+				r.Put("/{name}", secretSetHandler)
+				r.Get("/{name}", secretGetHandler)
+				r.Get("/{name}/{version}", secretGetHandler)
+				r.Get("/{name}/versions", secretListVersionsHandler)
+				r.Patch("/{name}/{version}", secretUpdateHandler)
+				r.Delete("/{name}", secretDeleteHandler)
+				r.Post("/{name}/backup", secretBackupHandler)
+				r.Post("/restore", secretRestoreHandler)
+			})
+			r.Route("/deletedsecrets", func(r chi.Router) {
+				r.Get("/", deletedSecretsListHandler)
+				r.Get("/{name}", deletedSecretGetHandler)
+				r.Post("/{name}/recover", secretRecoverHandler)
+				r.Delete("/{name}", secretPurgeHandler)
+			})
+		}
 
 		// Keys
 		r.Route("/keys", func(r chi.Router) {
