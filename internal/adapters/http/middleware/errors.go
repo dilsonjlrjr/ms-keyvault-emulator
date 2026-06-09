@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -38,6 +39,7 @@ func DomainError(w http.ResponseWriter, err error) {
 		writeKVError(w, http.StatusConflict, "Conflict",
 			e.Kind+" "+e.Name+" is currently in a deleted but recoverable state.")
 	default:
+		slog.Error("internal error", "err", err)
 		writeKVError(w, http.StatusInternalServerError, "InternalError", "An internal error occurred.")
 	}
 }

@@ -105,6 +105,23 @@ func (k *AADKey) ValidateToken(tokenStr string, strict bool) error {
 	return err
 }
 
+// SubjectFromToken extrai o claim "sub" sem validar assinatura.
+// Útil para logging/auditoria.
+func SubjectFromToken(tokenStr string) string {
+	p := gojwt.NewParser(gojwt.WithoutClaimsValidation())
+	claims := gojwt.MapClaims{}
+	if _, _, err := p.ParseUnverified(tokenStr, claims); err != nil {
+		return "unknown"
+	}
+	if sub, ok := claims["sub"].(string); ok && sub != "" {
+		return sub
+	}
+	if appid, ok := claims["appid"].(string); ok && appid != "" {
+		return appid
+	}
+	return "unknown"
+}
+
 func deterministicUUID(seed string) string {
 	// UUID v5 manual (sem importar crypto/sha1 só pra isso)
 	h := make([]byte, 16)

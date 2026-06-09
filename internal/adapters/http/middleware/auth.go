@@ -12,6 +12,12 @@ type ctxKey int
 
 const ctxKeyActor ctxKey = 0
 
+// ActorFromContext retorna o subject do JWT armazenado pelo middleware Auth.
+func ActorFromContext(r *http.Request) string {
+	v, _ := r.Context().Value(ctxKeyActor).(string)
+	return v
+}
+
 // Auth valida o Bearer token. Modo leniente (strict=false): verifica só estrutura/exp.
 // Modo strict: valida assinatura RS256 + aud + exp via JWKS interno.
 func Auth(aadKey *kvCrypto.AADKey, strict bool) func(http.Handler) http.Handler {
@@ -27,7 +33,8 @@ func Auth(aadKey *kvCrypto.AADKey, strict bool) func(http.Handler) http.Handler 
 				writeKVError(w, http.StatusForbidden, "Forbidden", err.Error())
 				return
 			}
-			ctx := context.WithValue(r.Context(), ctxKeyActor, token[:min(16, len(token))])
+			actor := kvCrypto.SubjectFromToken(token)
+			ctx := context.WithValue(r.Context(), ctxKeyActor, actor)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -42,11 +49,4 @@ func extractBearer(header string) (string, bool) {
 		return "", false
 	}
 	return token, true
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

@@ -20,6 +20,8 @@ type RouterConfig struct {
 	Secrets    *SecretHandlers
 	Keys       *KeyHandlers
 	Certs      *CertHandlers
+	// AuditFn é chamada após cada requisição do data-plane. Pode ser nil.
+	AuditFn func(actor, op, resource string, status int, reqID string)
 }
 
 func NewRouter(cfg RouterConfig) http.Handler {
@@ -28,6 +30,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	r.Use(chiMiddleware.RequestID)
 	r.Use(chiMiddleware.RealIP)
 	r.Use(kvmsHeaders)
+	r.Use(middleware.Logger)
 
 	// health — sem auth
 	r.Get("/healthz", healthz)
@@ -40,10 +43,13 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	r.Post("/{tenant}/oauth2/v2.0/token", aad.tokenV2)
 	r.Post("/{tenant}/oauth2/token", aad.tokenV1)
 
-	// data-plane — challenge + auth obrigatórios
+	// data-plane — challenge + auth + audit obrigatórios
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Challenge(cfg.VaultHost, cfg.TenantID))
 		r.Use(middleware.Auth(cfg.AADKey, cfg.AuthStrict))
+		if cfg.AuditFn != nil {
+			r.Use(middleware.Audit(cfg.AuditFn))
+		}
 
 		// Secrets
 		if cfg.Secrets != nil {
@@ -198,6 +204,8 @@ func healthz(w http.ResponseWriter, r *http.Request) {
 
 func kvmsHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqID := chiMiddleware.GetReqID(r.Context())
+		w.Header().Set("x-ms-request-id", reqID)
 		w.Header().Set("x-ms-keyvault-region", "emulator")
 		w.Header().Set("x-ms-keyvault-service-version", "1.0")
 		next.ServeHTTP(w, r)
