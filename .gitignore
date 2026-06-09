@@ -1,7 +1,7 @@
 # binários
 /bin/
 /out/
-kvemu
+/kvemu
 
 # dados e material sensível (nunca versionar)
 /data/
