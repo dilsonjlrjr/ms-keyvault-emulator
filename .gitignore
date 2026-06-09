@@ -1,0 +1,28 @@
+# binários
+/bin/
+/out/
+kvemu
+
+# dados e material sensível (nunca versionar)
+/data/
+/certs/
+*.db
+*.db-wal
+*.db-shm
+*.pem
+*.pfx
+*.key
+
+# ambiente
+.env
+.env.*
+
+# go
+coverage.out
+*.test
+__debug_bin*
+
+# editores / SO
+.idea/
+.vscode/
+.DS_Store
