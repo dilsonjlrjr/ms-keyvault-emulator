@@ -20,3 +20,18 @@ type SecretRepository interface {
 	Purge(ctx context.Context, vaultID, name string) error
 	IsDeleted(ctx context.Context, vaultID, name string) (bool, error)
 }
+
+type KeyRepository interface {
+	Upsert(ctx context.Context, vaultID string, k *domain.KeyVersion, privJWK map[string]any) error
+	Get(ctx context.Context, vaultID, name, version string) (*domain.KeyVersion, error)
+	GetCurrent(ctx context.Context, vaultID, name string) (*domain.KeyVersion, error)
+	GetPriv(ctx context.Context, vaultID, name, version string) (map[string]any, error)
+	List(ctx context.Context, vaultID string, max int, skipToken string) ([]*domain.KeyVersion, string, error)
+	ListVersions(ctx context.Context, vaultID, name string, max int, skipToken string) ([]*domain.KeyVersion, string, error)
+	UpdateAttributes(ctx context.Context, vaultID, name, version string, attrs domain.Attributes, keyOps []string, tags map[string]string) error
+	SoftDelete(ctx context.Context, vaultID, name string, schedPurge int64) (*domain.DeletedKey, error)
+	GetDeleted(ctx context.Context, vaultID, name string) (*domain.DeletedKey, error)
+	ListDeleted(ctx context.Context, vaultID string, max int, skipToken string) ([]*domain.DeletedKey, string, error)
+	Recover(ctx context.Context, vaultID, name string) (*domain.KeyVersion, error)
+	Purge(ctx context.Context, vaultID, name string) error
+}
