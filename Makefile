@@ -2,8 +2,10 @@ BIN      := bin/kvemu
 MAIN     := ./cmd/kvemu
 VERSION  := $(shell git describe --tags --always 2>/dev/null || echo dev)
 LDFLAGS  := -ldflags="-s -w -X main.version=$(VERSION)"
+IMAGE    := ghcr.io/dilsonrabelo/kvemu
 
-.PHONY: all build test verify gate run clean
+.PHONY: all build test verify gate run clean \
+        docker/build docker/run docker/push docker/buildx docker/seed
 
 all: gate build
 
@@ -33,3 +35,36 @@ clean:
 ## lint: verifica estilo e erros estáticos
 lint:
 	golangci-lint run ./...
+
+## docker/build: constrói a imagem para a arquitetura local
+docker/build:
+	docker build \
+		-f deploy/Dockerfile \
+		--build-arg VERSION=$(VERSION) \
+		-t $(IMAGE):$(VERSION) \
+		-t $(IMAGE):latest \
+		.
+
+## docker/run: sobe o emulador via docker-compose
+docker/run:
+	VERSION=$(VERSION) docker compose -f deploy/docker-compose.yml up --build
+
+## docker/push: envia imagem para o registry
+docker/push: docker/build
+	docker push $(IMAGE):$(VERSION)
+	docker push $(IMAGE):latest
+
+## docker/buildx: multi-arch build (linux/amd64 + linux/arm64) com push
+docker/buildx:
+	docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		-f deploy/Dockerfile \
+		--build-arg VERSION=$(VERSION) \
+		-t $(IMAGE):$(VERSION) \
+		-t $(IMAGE):latest \
+		--push \
+		.
+
+## docker/seed: injeta dados de desenvolvimento no emulador em execução
+docker/seed:
+	docker compose -f deploy/docker-compose.yml exec kvemu /kvemu seed

@@ -1,0 +1,13 @@
+bin/
+data/
+certs/
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+.git/
+.gitignore
+test/
+arquitetura/
+deploy/

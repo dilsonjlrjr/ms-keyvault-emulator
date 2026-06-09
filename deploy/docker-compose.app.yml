@@ -1,0 +1,44 @@
+# Exemplo: emulador + aplicação Spring Boot
+# Uso: docker compose -f docker-compose.yml -f docker-compose.app.yml up
+#
+# Pré-requisito: a imagem da app deve aceitar as vars abaixo.
+# Certifique-se de importar o CA do emulador no truststore Java:
+#   keytool -importcert -noprompt -alias kvemu-ca \
+#     -file /certs/ca.pem \
+#     -keystore $JAVA_HOME/lib/security/cacerts \
+#     -storepass changeit
+
+name: kvemu
+
+services:
+  kvemu:
+    # herda tudo do docker-compose.yml, expõe CA para a app
+    volumes:
+      - kvemu-certs:/certs:ro
+
+  app:
+    image: "${APP_IMAGE:-my-spring-app:latest}"
+    depends_on:
+      kvemu:
+        condition: service_healthy
+    environment:
+      # Spring Cloud Azure — aponta para o emulador
+      AZURE_KEYVAULT_ENDPOINT:              "https://kvemu:13000"
+      AZURE_TENANT_ID:                      "${KV_TENANT_ID:-a0c2a3f5-e1b3-4d6a-9c41-2cdd1f2c7e0f}"
+      AZURE_CLIENT_ID:                      "dev-client"
+      AZURE_CLIENT_SECRET:                  "dev-secret"
+      # Desativa verificação de cert se necessário (não recomendado em prod)
+      AZURE_KEYVAULT_DISABLE_CHALLENGE_RESOURCE_VERIFICATION: "true"
+      # Java truststore com CA do emulador (monte via initContainer ou volume)
+      JAVA_TOOL_OPTIONS: >-
+        -Djavax.net.ssl.trustStore=/certs/truststore.p12
+        -Djavax.net.ssl.trustStorePassword=changeit
+    volumes:
+      - kvemu-certs:/certs:ro
+    ports:
+      - "8080:8080"
+    extra_hosts:
+      - "kvemu:host-gateway"
+
+volumes:
+  kvemu-certs:
