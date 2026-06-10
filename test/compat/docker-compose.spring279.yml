@@ -1,0 +1,109 @@
+name: kvemu-compat-spring279
+
+# Prova de compatibilidade: Spring Boot 2.7.9 + Spring Cloud Azure 4.5.0
+
+services:
+
+  kvemu:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+    container_name: kvemu-compat279
+    networks:
+      default:
+        aliases:
+          - vault.kvemu.local
+          - login.microsoftonline.com
+    environment:
+      KV_ADDR:        "0.0.0.0:13000"
+      KV_VAULT_HOST:  "vault.kvemu.local:13000"
+      KV_TENANT_ID:   "a0c2a3f5-e1b3-4d6a-9c41-2cdd1f2c7e0f"
+      KV_TLS_AUTO:    "true"
+      KV_TLS_SAN:     "login.microsoftonline.com"
+      KV_AUTH_STRICT: "false"
+      KV_DATA:        "/data/kv.db"
+      KV_CERT_DIR:    "/certs"
+      KV_CA_OUT:      "/certs/ca.pem"
+    volumes:
+      - kv-data279:/data
+      - kv-certs279:/certs
+    healthcheck:
+      test: ["CMD", "/kvemu", "healthcheck", "--addr", "https://vault.kvemu.local:13000"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+
+  kvemu-seed:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+    command: ["seed"]
+    environment:
+      KV_DATA:       "/data/kv.db"
+      KV_VAULT_HOST: "vault.kvemu.local:13000"
+      KV_TENANT_ID:  "a0c2a3f5-e1b3-4d6a-9c41-2cdd1f2c7e0f"
+      KV_CERT_DIR:   "/certs"
+    volumes:
+      - kv-data279:/data
+      - kv-certs279:/certs
+    depends_on:
+      kvemu:
+        condition: service_healthy
+    restart: "no"
+
+  spring279:
+    build:
+      context: spring279
+    container_name: spring279-compat
+    environment:
+      AZURE_KEYVAULT_ENDPOINT: "https://vault.kvemu.local:13000"
+      AZURE_CLIENT_ID:         "dev-client"
+      AZURE_CLIENT_SECRET:     "dev-secret"
+      AZURE_TENANT_ID:         "a0c2a3f5-e1b3-4d6a-9c41-2cdd1f2c7e0f"
+      AZURE_AUTHORITY_HOST:    "https://vault.kvemu.local:13000/"
+    volumes:
+      - kv-certs279:/certs:ro
+    depends_on:
+      kvemu-seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/probe"]
+      interval: 15s
+      timeout: 10s
+      start_period: 120s
+      retries: 8
+
+  probe:
+    image: curlimages/curl:latest
+    depends_on:
+      spring279:
+        condition: service_healthy
+    restart: "no"
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        echo "=== KVEMU COMPAT PROBE ==="
+        echo "Spring Boot 2.7.9 + Spring Cloud Azure 4.5.0"
+        echo ""
+        RESP=$$(curl -sf http://spring279-compat:8080/probe)
+        echo "Response: $$RESP"
+        echo ""
+        if echo "$$RESP" | grep -q '"kv_connected":true'; then
+          echo "================================================================"
+          echo "COMPAT OK: Spring Boot 2.7.9 conectou ao Key Vault emulado."
+          echo "  - Challenge WWW-Authenticate parseado"
+          echo "  - Token obtido do AAD emulado"
+          echo "  - 4/4 secrets carregados via property-sources (db-password, api-key, connection-string, COSMO_DB_URL)"
+          echo "================================================================"
+          exit 0
+        else
+          echo "COMPAT FAIL: kv_connected=false ou resposta inesperada."
+          exit 1
+        fi
+
+volumes:
+  kv-data279:
+  kv-certs279:

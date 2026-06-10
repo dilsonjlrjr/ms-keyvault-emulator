@@ -17,11 +17,20 @@ RUN CGO_ENABLED=0 GOOS=linux \
       -o /kvemu \
       ./cmd/kvemu
 
+# cria dirs de dados com ownership do nonroot (UID 65532) para que named volumes
+# sejam inicializados com permissões corretas no primeiro uso do container
+RUN mkdir -p /data /certs && chown 65532:65532 /data /certs
+
 # ─── stage 2: distroless (sem shell, sem libc, ~7MB) ────────────────────────
 FROM gcr.io/distroless/static-debian12:nonroot
 
-COPY --from=builder /kvemu     /kvemu
-COPY --from=builder /build/migrations /migrations
+COPY --from=builder /kvemu /kvemu
+
+# dirs owned por nonroot → Docker inicializa named volumes com ownership correto
+COPY --from=builder --chown=65532:65532 /data  /data
+COPY --from=builder --chown=65532:65532 /certs /certs
+
+VOLUME ["/data", "/certs"]
 
 EXPOSE 13000
 
