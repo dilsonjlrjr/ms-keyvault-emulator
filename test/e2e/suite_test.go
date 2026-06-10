@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -176,12 +177,15 @@ func (c *kvClient) assertOK(t *testing.T, resp *http.Response, want int) {
 // ─── helpers de autenticação ──────────────────────────────────────────────────
 
 func acquireToken(client *http.Client, baseURL, tenantID string) string {
+	// Extract vault host from baseURL (https://host:port → host:port)
+	vaultHost := strings.TrimPrefix(baseURL, "https://")
+	scope := fmt.Sprintf("https://%s/.default", vaultHost)
 	u := fmt.Sprintf("%s/%s/oauth2/v2.0/token", baseURL, tenantID)
 	resp, err := client.PostForm(u, url.Values{
 		"grant_type":    {"client_credentials"},
 		"client_id":     {"e2e-client"},
 		"client_secret": {"e2e-secret"},
-		"scope":         {"https://vault.azure.net/.default"},
+		"scope":         {scope},
 	})
 	must(err)
 	defer resp.Body.Close()
