@@ -88,6 +88,8 @@ Populates development secrets and keys:
 | `KV_CERT_DIR` | `./certs` | Certificate storage directory |
 | `KV_AUTH_STRICT` | `false` | Validate JWT signature (RS256) instead of lenient |
 | `KV_MASTER_KEY` | _(dev key)_ | Master key for AES-256-GCM at-rest encryption |
+| `KV_BASE_DOMAIN` | `kvemu.local` | Base domain for vault hostname routing (v1.1) |
+| `KV_DEFAULT_VAULT` | `vault` | Default vault name (v1.1) |
 
 ---
 
@@ -303,6 +305,17 @@ All served by the same process, no external identity provider needed.
 | `GET` | `/certificates/issuers/{name}` | Get issuer |
 | `PUT` | `/certificates/issuers/{name}` | Set issuer |
 | `DELETE` | `/certificates/issuers/{name}` | Delete issuer |
+
+#### Vault Management (emulator-specific, no auth)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/vaults` | List vaults |
+| `POST` | `/vaults` | Create vault |
+| `GET` | `/vaults/{name}` | Get vault details |
+| `DELETE` | `/vaults/{name}` | Delete vault (cascade) |
+| `GET` | `/vaults/{name}/export` | Export vault as JSON |
+| `POST` | `/vaults/import` | Import vault from JSON |
 
 ---
 
@@ -692,6 +705,7 @@ migrations/                                   # SQLite schema migrations
 - **Audit logging** — request audit trail stored in SQLite
 - **Pagination** — maxresults + skipToken for all list endpoints
 - **Distroless Docker image** — ~8 MB, zero shell, zero libc dependencies
+- **Multi-vault** — hostname-based routing (e.g. `prod.kvemu.local`, `staging.kvemu.local`), vault CRUD, export/import
 
 ---
 
@@ -779,6 +793,8 @@ Popula secrets e chaves de desenvolvimento:
 | `KV_CERT_DIR` | `./certs` | Diretório de armazenamento dos certificados |
 | `KV_AUTH_STRICT` | `false` | Validar assinatura JWT (RS256) em vez de leniente |
 | `KV_MASTER_KEY` | _(chave dev)_ | Chave mestra para cifra AES-256-GCM at-rest |
+| `KV_BASE_DOMAIN` | `kvemu.local` | Domínio base para roteamento por hostname (v1.1) |
+| `KV_DEFAULT_VAULT` | `vault` | Nome do vault padrão (v1.1) |
 
 ---
 
@@ -994,6 +1010,17 @@ Todos servidos pelo mesmo processo, sem dependência externa de identidade.
 | `GET` | `/certificates/issuers/{name}` | Obter emissor |
 | `PUT` | `/certificates/issuers/{name}` | Definir emissor |
 | `DELETE` | `/certificates/issuers/{name}` | Remover emissor |
+
+#### Gestão de Vaults (específico do emulador, sem auth)
+
+| Método | Caminho | Descrição |
+|---|---|---|
+| `GET` | `/vaults` | Listar vaults |
+| `POST` | `/vaults` | Criar vault |
+| `GET` | `/vaults/{name}` | Detalhes do vault |
+| `DELETE` | `/vaults/{name}` | Deletar vault (cascata) |
+| `GET` | `/vaults/{name}/export` | Exportar vault como JSON |
+| `POST` | `/vaults/import` | Importar vault de JSON |
 
 ---
 
@@ -1383,3 +1410,4 @@ migrations/                                   # Migrações do schema SQLite
 - **Audit logging** — trilha de auditoria de requisições armazenada no SQLite
 - **Paginação** — maxresults + skipToken em todos os endpoints de lista
 - **Imagem Docker distroless** — ~8 MB, sem shell, sem dependências de libc
+- **Multi-vault** — roteamento por hostname (ex: `prod.kvemu.local`, `staging.kvemu.local`), CRUD de vaults, export/import
