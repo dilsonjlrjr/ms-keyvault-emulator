@@ -430,6 +430,72 @@ services:
       - certs:/certs:ro
 ```
 
+#### Local Development (without Docker)
+
+When running the app directly on your machine against a remote kvemu instance,
+the Azure SDK's MSAL4J contacts `login.microsoftonline.com` by default. Using
+`AZURE_AUTHORITY_HOST` causes silent crashes in SDK 4.x (Spring Boot 2.7).
+
+Instead, redirect DNS **only for the JVM process** using `jdk.net.hosts.file`
+(requires Java 18+ — Zulu 21 is fine):
+
+**1. Configure the kvemu server to accept `login.microsoftonline.com` traffic:**
+
+```yaml
+# docker-compose.yml on the server
+services:
+  kvemu:
+    ports:
+      - "13001:13000"
+      - "443:13000"                   # ← required for MSAL4J (default HTTPS port)
+    environment:
+      KV_TLS_SAN: "login.microsoftonline.com"  # ← required for TLS hostname validation
+```
+
+**2. Import the CA certificate into the JVM truststore:**
+
+```bash
+keytool -importcert -noprompt \
+  -alias kvemu-ca \
+  -file ca.pem \
+  -keystore $JAVA_HOME/lib/security/cacerts \
+  -storepass changeit
+```
+
+**3. Create a custom hosts file in the project:**
+
+```
+# custom-hosts (in project root)
+192.168.100.112 login.microsoftonline.com
+192.168.100.112 lab-dilson
+```
+
+**4. Create a `.env` file for the run configuration:**
+
+```bash
+# gmsuite-configs-dev.env
+JAVA_TOOL_OPTIONS=-Djdk.net.hosts.file=/absolute/path/to/project/custom-hosts
+
+AzureKeyVault__Enabled=true
+AzureKeyVault__Endpoint=https://lab-dilson:13001/
+AzureKeyVault__Common__Endpoint=https://lab-dilson:13002/
+
+AZURE_TENANT_ID=a0c2a3f5-e1b3-4d6a-9c41-2cdd1f2c7e0f
+AZURE_CLIENT_ID=kv-interface
+AZURE_CLIENT_SECRET=kv-interface-secret
+```
+
+**How it works:**
+
+- The JVM resolves `login.microsoftonline.com` via the custom hosts file — system `/etc/hosts` is untouched
+- MSAL4J contacts `https://login.microsoftonline.com:443/{tenant}/oauth2/v2.0/token`
+- Port 443 on the server forwards to the kvemu instance
+- TLS handshake succeeds because the cert includes `login.microsoftonline.com` as SAN
+- Token is obtained from kvemu's fake AAD, then used for data-plane calls
+- `portal.azure.com` and other Azure services continue to work normally
+
+This approach is **verified compatible with all supported SDK versions** (4.x and 5.x).
+
 #### Verified compatibility
 
 | Spring Boot | Spring Cloud Azure | Status |
@@ -1054,6 +1120,72 @@ services:
     volumes:
       - certs:/certs:ro
 ```
+
+#### Desenvolvimento Local (sem Docker)
+
+Ao rodar a aplicação diretamente na sua máquina contra uma instância remota do
+kvemu, o MSAL4J do SDK Azure contata `login.microsoftonline.com` por padrão.
+Usar `AZURE_AUTHORITY_HOST` causa crash silencioso no SDK 4.x (Spring Boot 2.7).
+
+A solução é redirecionar o DNS **apenas para o processo JVM** usando
+`jdk.net.hosts.file` (requer Java 18+ — Zulu 21 funciona):
+
+**1. Configure o servidor kvemu para aceitar tráfego de `login.microsoftonline.com`:**
+
+```yaml
+# docker-compose.yml no servidor
+services:
+  kvemu:
+    ports:
+      - "13001:13000"
+      - "443:13000"                   # ← obrigatório para MSAL4J (porta HTTPS padrão)
+    environment:
+      KV_TLS_SAN: "login.microsoftonline.com"  # ← obrigatório para validação TLS do hostname
+```
+
+**2. Importe o certificado CA no truststore da JVM:**
+
+```bash
+keytool -importcert -noprompt \
+  -alias kvemu-ca \
+  -file ca.pem \
+  -keystore $JAVA_HOME/lib/security/cacerts \
+  -storepass changeit
+```
+
+**3. Crie um arquivo de hosts customizado no projeto:**
+
+```
+# custom-hosts (na raiz do projeto)
+192.168.100.112 login.microsoftonline.com
+192.168.100.112 lab-dilson
+```
+
+**4. Crie um arquivo `.env` para a configuração de execução:**
+
+```bash
+# gmsuite-configs-dev.env
+JAVA_TOOL_OPTIONS=-Djdk.net.hosts.file=/caminho/absoluto/para/projeto/custom-hosts
+
+AzureKeyVault__Enabled=true
+AzureKeyVault__Endpoint=https://lab-dilson:13001/
+AzureKeyVault__Common__Endpoint=https://lab-dilson:13002/
+
+AZURE_TENANT_ID=a0c2a3f5-e1b3-4d6a-9c41-2cdd1f2c7e0f
+AZURE_CLIENT_ID=kv-interface
+AZURE_CLIENT_SECRET=kv-interface-secret
+```
+
+**Como funciona:**
+
+- A JVM resolve `login.microsoftonline.com` via o arquivo de hosts customizado — o `/etc/hosts` do sistema permanece intacto
+- MSAL4J contata `https://login.microsoftonline.com:443/{tenant}/oauth2/v2.0/token`
+- A porta 443 no servidor encaminha para a instância kvemu
+- TLS handshake funciona porque o certificado inclui `login.microsoftonline.com` como SAN
+- Token é obtido do AAD fake do kvemu e usado nas chamadas data-plane
+- `portal.azure.com` e outros serviços Azure continuam funcionando normalmente
+
+Esta abordagem é **compatível com todas as versões de SDK suportadas** (4.x e 5.x).
 
 #### Compatibilidade verificada
 
