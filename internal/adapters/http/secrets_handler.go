@@ -61,8 +61,7 @@ func (h *SecretHandlers) toBundle(sv *domain.SecretVersion) secretBundleResp {
 func (h *SecretHandlers) toBundleNoValue(sv *domain.SecretVersion) secretBundleResp {
 	b := h.toBundle(sv)
 	b.Value = ""
-	// id de lista omite versão (comportamento Azure)
-	b.ID = domain.ID(h.vaultHost, "secrets", sv.Name, "")
+	b.ID = domain.ID(h.vaultHost, "secrets", sv.Name, sv.Version)
 	return b
 }
 
