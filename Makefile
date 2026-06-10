@@ -5,7 +5,8 @@ LDFLAGS  := -ldflags="-s -w -X main.version=$(VERSION)"
 IMAGE    := ghcr.io/dilsonrabelo/kvemu
 
 .PHONY: all build test verify gate run clean \
-        docker/build docker/run docker/push docker/buildx docker/seed
+        docker/build docker/run docker/push docker/buildx docker/seed \
+        compat/spring27 compat/spring279 compat/spring3
 
 all: gate build
 
@@ -22,7 +23,7 @@ verify:
 	go test ./test/e2e/... -tags=e2e -count=1 -timeout=5m
 
 ## gate: test + verify — bloqueia build se qualquer camada falhar
-gate: test
+gate: test verify
 
 ## run: sobe o emulador em modo dev (TLS auto-gen, auth leniente)
 run:
@@ -68,3 +69,18 @@ docker/buildx:
 ## docker/seed: injeta dados de desenvolvimento no emulador em execução
 docker/seed:
 	docker compose -f deploy/docker-compose.yml exec kvemu /kvemu seed
+
+## compat/spring27: prova de compatibilidade Spring Boot 2.7 + Spring Cloud Azure 4.5.0
+## Requer Docker. Primeira execução baixa imagens Maven (~400 MB) e demora ~5 min.
+compat/spring27:
+	go test -tags=spring ./test/compat/... -v -timeout=15m -run TestSpringBoot27Compat
+
+## compat/spring3: prova de compatibilidade Spring Boot 3.4 + Spring Cloud Azure 5.x
+## Requer Docker. Primeira execução baixa imagens Maven (~400 MB) e demora ~5 min.
+compat/spring3:
+	go test -tags=spring ./test/compat/... -v -timeout=15m -run TestSpringBoot3Compat
+
+## compat/spring279: prova de compatibilidade Spring Boot 2.7.9 + Spring Cloud Azure 4.5.0
+## Requer Docker. Primeira execução baixa imagens Maven (~400 MB) e demora ~5 min.
+compat/spring279:
+	go test -tags=spring ./test/compat/... -v -timeout=15m -run TestSpringBoot279Compat
