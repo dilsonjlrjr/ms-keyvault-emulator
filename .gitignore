@@ -26,3 +26,4 @@ __debug_bin*
 .idea/
 .vscode/
 .DS_Store
+CONTEXT.md
