@@ -76,6 +76,7 @@ return host.regionMatches(true, host.length() - toEndWith.length(), toEndWith, 0
 
 ## Endpoints AAD Fake
 
+- `GET /{tenant}/discovery/instance` — Instance discovery (MSAL4J)
 - `GET /{tenant}/v2.0/.well-known/openid-configuration` — OIDC discovery v2
 - `GET /{tenant}/.well-known/openid-configuration` — OIDC discovery v1
 - `GET /{tenant}/discovery/v2.0/keys` — JWKS
@@ -121,7 +122,7 @@ Todos servidos pelo mesmo processo.
 | 4 | ✅ | Certificates: create self-signed, import PEM, get/list, policy, delete/recover/purge, contacts/issuers |
 | 5 | Parcial | Purge scheduler, audit log, seed, healthcheck subcommand |
 | 5.5 | ✅ | Docker: distroless Dockerfile, docker-compose, docker-compose.app |
-| 6 | ✅ | Teste real com Spring Boot em docker-compose.app |
+| 6 | ✅ | Teste real com Spring Boot (3 versões: 2.7.9, 2.7.18, 3.4.5) |
 
 ---
 
@@ -247,12 +248,70 @@ Fluxo testado:
 
 ### Resultado
 
-✅ **COMPAT OK** — Spring Boot 3.4 + Spring Cloud Azure 5.x (2m17s)
+✅ **COMPAT OK** — Spring Boot 2.7.18 + Spring Cloud Azure 4.5.0 (22s)
+- Challenge parseado sem ArrayIndexOutOfBoundsException
+- Instance Discovery → OIDC → Token obtidos do AAD emulado
+- 4/4 secrets (db-password, api-key, connection-string, COSMO_DB_URL) carregados via property-sources
+- Property resolution `app.cosmos.url=${COSMO_DB_URL}` validada
+
+---
+
+## Teste de Compatibilidade Spring Boot 2.7.9
+
+### Setup
+
+- **App Spring:** `test/compat/spring279/` — Spring Boot 2.7.9 + Spring Cloud Azure 4.5.0
+- **POM:** `spring-cloud-azure-starter-keyvault-secrets` 4.5.0
+- **Java:** Eclipse Temurin 17
+- **ProbeController:** mesmo código do spring27
+
+### Resultado
+
+✅ **COMPAT OK** — Spring Boot 2.7.9 + Spring Cloud Azure 4.5.0 (24s)
+- Mesma configuração do spring27, parser legado funciona
+- 4/4 secrets carregados via property-sources
+
+---
+
+## Teste de Compatibilidade Spring Boot 3.4
+
+### Setup
+
+- **App Spring:** `test/compat/spring3/` — Spring Boot 3.4.5 + Spring Cloud Azure 5.21.0
+- **POM:** `spring-cloud-azure-starter-keyvault-secrets` 5.21.0
+- **Java:** Eclipse Temurin 21 (Jakarta namespace)
+- **ProbeController:** mesmo código do spring27 (compatível com Spring Boot 3.x)
+- **Dockerfile:** multi-stage Maven build, Java 21 JRE, importa CA do kvemu
+- **entrypoint.sh:** idêntico ao spring27
+
+### Fluxo do Teste
+
+1. `docker compose up --build -d`
+2. Aguarda spring3-compat ficar healthy (healthcheck: `curl /probe`)
+3. Executa `curl /probe` e verifica `kv_connected:true`
+4. Passa se 4/4 secrets carregados no Spring context
+
+### Resultado
+
+✅ **COMPAT OK** — Spring Boot 3.4 + Spring Cloud Azure 5.x (21s)
 - Challenge parseado sem erros
 - Instance Discovery → OIDC → Token obtidos do AAD emulado
-- 3/3 secrets (db-password, api-key, connection-string) carregados via property-sources
+- 4/4 secrets (db-password, api-key, connection-string, COSMO_DB_URL) carregados via property-sources
+- **Sem problemas encontrados** — SDK Azure 5.x funciona nativamente com o emulador
 
-**Sem problemas encontrados** — o SDK Azure moderno (5.x) funciona nativamente com o emulador, sem precisar de workarounds de parser legado.
+---
+
+## Property Resolution: `app.cosmos.url=${COSMO_DB_URL}`
+
+O secret `COSMO_DB_URL` (`https://cosmos.example.com`) é injetado via seed. No `application.properties` dos testes:
+
+```properties
+app.cosmos.url=${COSMO_DB_URL}
+```
+
+O Spring Cloud Azure resolve `${COSMO_DB_URL}` do Key Vault emulado → `app.cosmos.url` = `https://cosmos.example.com`.
+
+Validado via `CommandLineRunner` (Application.java imprime o valor no startup) + `ProbeController` (expõe `cosmos_db_url` no `/probe`). Testes Go verificam `"cosmos_db_url":"https://cosmos.example.com"` na resposta.
 
 ---
 
@@ -261,13 +320,16 @@ Fluxo testado:
 | Componente | Status | Risco |
 |-----------|--------|-------|
 | Auth challenge | ✅ Testado | Zero |
-| AAD fake | ✅ Testado | Zero |
+| AAD fake (OIDC + Instance Discovery) | ✅ Testado | Zero |
 | Secrets CRUD | ✅ Testado | Zero |
+| Property resolution (`${SECRET_NAME}`) | ✅ Testado | Zero |
 | Keys CRUD + crypto | ✅ Implementado | Baixo |
 | Certificates CRUD | ✅ Implementado | Baixo |
 | Cert backing PEM vs PFX | Só PEM | Alto |
 | @AzureKeyVaultSecretValue polling | Não implementado | Médio |
 | ManagedIdentityCredential (IMDS) | Não implementado | N/A |
+| Spring Boot 2.7.9 + Azure 4.5.0 | ✅ Testado | Zero |
+| Spring Boot 2.7.18 + Azure 4.5.0 | ✅ Testado | Zero |
 | Spring Boot 3.4 + Azure 5.x | ✅ Testado | Zero |
 | MSAL4J authority host | ✅ Resolvido (DNS redirect) | Zero |
 
@@ -310,6 +372,12 @@ go test -tags=e2e ./test/e2e/... -v -timeout=5m
 
 # Compat test Spring Boot 2.7
 make compat/spring27
+
+# Compat test Spring Boot 2.7.9
+make compat/spring279
+
+# Compat test Spring Boot 3.4
+make compat/spring3
 
 # Run emulator
 make run
