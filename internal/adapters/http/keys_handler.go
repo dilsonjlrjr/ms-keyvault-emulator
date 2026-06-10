@@ -36,19 +36,23 @@ type deletedKeyResp struct {
 	ScheduledPurge int64  `json:"scheduledPurgeDate,omitempty"`
 }
 
-func (h *KeyHandlers) toBundle(kv *domain.KeyVersion) keyBundleResp {
+func (h *KeyHandlers) host(r *http.Request) string {
+	return vaultHostFromContext(r, h.vaultHost)
+}
+
+func (h *KeyHandlers) toBundle(kv *domain.KeyVersion, host string) keyBundleResp {
 	pub := make(map[string]any)
 	for k, v := range kv.PubJWK {
 		pub[k] = v
 	}
-	pub["kid"] = domain.ID(h.vaultHost, "keys", kv.Name, kv.Version)
+	pub["kid"] = domain.ID(host, "keys", kv.Name, kv.Version)
 	pub["key_ops"] = kv.KeyOps
 	return keyBundleResp{Key: pub, Attributes: kv.Attributes}
 }
 
-func (h *KeyHandlers) toDeleted(dk *domain.DeletedKey) deletedKeyResp {
+func (h *KeyHandlers) toDeleted(dk *domain.DeletedKey, host string) deletedKeyResp {
 	return deletedKeyResp{
-		keyBundleResp:  h.toBundle(&dk.KeyVersion),
+		keyBundleResp:  h.toBundle(&dk.KeyVersion, host),
 		RecoveryID:     dk.RecoveryID,
 		DeletedDate:    dk.DeletedDate,
 		ScheduledPurge: dk.ScheduledPurge,
@@ -91,7 +95,7 @@ func (h *KeyHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.toBundle(kv))
+	writeJSON(w, http.StatusOK, h.toBundle(kv, h.host(r)))
 }
 
 // ─── PUT /keys/{name} ─────────────────────────────────────────────────────────
@@ -124,7 +128,7 @@ func (h *KeyHandlers) Import(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.toBundle(kv))
+	writeJSON(w, http.StatusOK, h.toBundle(kv, h.host(r)))
 }
 
 // ─── GET /keys/{name}[/{version}] ─────────────────────────────────────────────
@@ -137,7 +141,7 @@ func (h *KeyHandlers) Get(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.toBundle(kv))
+	writeJSON(w, http.StatusOK, h.toBundle(kv, h.host(r)))
 }
 
 // ─── GET /keys ────────────────────────────────────────────────────────────────
@@ -149,9 +153,10 @@ func (h *KeyHandlers) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	items := make([]any, len(list))
+	host := h.host(r)
 	for i, kv := range list {
-		b := h.toBundle(kv)
-		b.Key["kid"] = domain.ID(h.vaultHost, "keys", kv.Name, "")
+		b := h.toBundle(kv, host)
+		b.Key["kid"] = domain.ID(host, "keys", kv.Name, "")
 		items[i] = b
 	}
 	writeJSON(w, http.StatusOK, listResp{Value: items, NextLink: nextLink(r, next)})
@@ -168,7 +173,7 @@ func (h *KeyHandlers) ListVersions(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]any, len(list))
 	for i, kv := range list {
-		items[i] = h.toBundle(kv)
+		items[i] = h.toBundle(kv, h.host(r))
 	}
 	writeJSON(w, http.StatusOK, listResp{Value: items, NextLink: nextLink(r, next)})
 }
@@ -198,7 +203,7 @@ func (h *KeyHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.toBundle(kv))
+	writeJSON(w, http.StatusOK, h.toBundle(kv, h.host(r)))
 }
 
 // ─── DELETE /keys/{name} ─────────────────────────────────────────────────────
@@ -209,7 +214,7 @@ func (h *KeyHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.toDeleted(dk))
+	writeJSON(w, http.StatusOK, h.toDeleted(dk, h.host(r)))
 }
 
 func (h *KeyHandlers) GetDeleted(w http.ResponseWriter, r *http.Request) {
@@ -218,7 +223,7 @@ func (h *KeyHandlers) GetDeleted(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.toDeleted(dk))
+	writeJSON(w, http.StatusOK, h.toDeleted(dk, h.host(r)))
 }
 
 func (h *KeyHandlers) ListDeleted(w http.ResponseWriter, r *http.Request) {
@@ -229,7 +234,7 @@ func (h *KeyHandlers) ListDeleted(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]any, len(list))
 	for i, dk := range list {
-		items[i] = h.toDeleted(dk)
+		items[i] = h.toDeleted(dk, h.host(r))
 	}
 	writeJSON(w, http.StatusOK, listResp{Value: items, NextLink: nextLink(r, next)})
 }
@@ -240,7 +245,7 @@ func (h *KeyHandlers) Recover(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.toBundle(kv))
+	writeJSON(w, http.StatusOK, h.toBundle(kv, h.host(r)))
 }
 
 func (h *KeyHandlers) Purge(w http.ResponseWriter, r *http.Request) {
@@ -268,7 +273,7 @@ func (h *KeyHandlers) Encrypt(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err); return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
-		"kid":   domain.ID(h.vaultHost, "keys", name, ver),
+		"kid":   	domain.ID(h.host(r), "keys", name, ver),
 		"value": base64.RawURLEncoding.EncodeToString(ct),
 	})
 }
@@ -288,7 +293,7 @@ func (h *KeyHandlers) Decrypt(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err); return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
-		"kid":   domain.ID(h.vaultHost, "keys", name, ver),
+		"kid":   	domain.ID(h.host(r), "keys", name, ver),
 		"value": base64.RawURLEncoding.EncodeToString(plain),
 	})
 }
@@ -306,7 +311,7 @@ func (h *KeyHandlers) Sign(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err); return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
-		"kid":   domain.ID(h.vaultHost, "keys", name, ver),
+		"kid":   	domain.ID(h.host(r), "keys", name, ver),
 		"value": base64.RawURLEncoding.EncodeToString(sig),
 	})
 }
@@ -341,7 +346,7 @@ func (h *KeyHandlers) WrapKey(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err); return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
-		"kid":   domain.ID(h.vaultHost, "keys", name, ver),
+		"kid":   	domain.ID(h.host(r), "keys", name, ver),
 		"value": base64.RawURLEncoding.EncodeToString(ct),
 	})
 }
@@ -359,7 +364,7 @@ func (h *KeyHandlers) UnwrapKey(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err); return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
-		"kid":   domain.ID(h.vaultHost, "keys", name, ver),
+		"kid":   	domain.ID(h.host(r), "keys", name, ver),
 		"value": base64.RawURLEncoding.EncodeToString(plain),
 	})
 }

@@ -49,15 +49,20 @@ func BuildChallenge(vaultHost, tenantID string) string {
 // Challenge é um middleware chi que emite 401 + WWW-Authenticate quando
 // não há header Authorization na requisição.
 // Chamado ANTES do middleware de validação de token.
-func Challenge(vaultHost, tenantID string) func(http.Handler) http.Handler {
-	header := BuildChallenge(vaultHost, tenantID)
+// O vault é obtido do context (injetado pelo VaultResolver).
+func Challenge() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Header.Get("Authorization") == "" {
-				// Set (nunca Add) — evita duplicar o header
+				vault := VaultFromContext(r.Context())
+				if vault == nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				header := BuildChallenge(vault.Host, vault.TenantID)
 				w.Header().Set("WWW-Authenticate", header)
 				w.WriteHeader(http.StatusUnauthorized)
-				return // body vazio
+				return
 			}
 			next.ServeHTTP(w, r)
 		})

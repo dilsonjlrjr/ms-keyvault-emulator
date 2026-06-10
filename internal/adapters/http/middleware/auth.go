@@ -21,10 +21,17 @@ func ActorFromContext(r *http.Request) string {
 
 // Auth valida o Bearer token. Modo leniente (strict=false): verifica só estrutura/exp.
 // Modo strict: valida assinatura RS256 + aud + exp via JWKS interno.
-func Auth(aadKey *kvCrypto.AADKey, strict bool, vaultHost string) func(http.Handler) http.Handler {
-	audience := fmt.Sprintf("https://%s", vaultHost)
+// O vault é obtido do context (injetado pelo VaultResolver).
+func Auth(aadKey *kvCrypto.AADKey, strict bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			vault := VaultFromContext(r.Context())
+			if vault == nil {
+				writeKVError(w, http.StatusInternalServerError, "InternalError", "vault not in context")
+				return
+			}
+			audience := fmt.Sprintf("https://%s", vault.Host)
+
 			bearer := r.Header.Get("Authorization")
 			token, ok := extractBearer(bearer)
 			if !ok {

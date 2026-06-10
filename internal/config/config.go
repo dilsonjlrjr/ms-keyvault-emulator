@@ -6,18 +6,20 @@ import (
 )
 
 type Config struct {
-	Addr       string // KV_ADDR — bind do servidor, ex: 0.0.0.0:13000
-	VaultHost  string // KV_VAULT_HOST — host:port usado no challenge/SAN/IDs
-	TenantID   string // KV_TENANT_ID — GUID do tenant do AAD fake
-	DataPath   string // KV_DATA — caminho do arquivo SQLite
-	TLSAuto    bool   // KV_TLS_AUTO — gera CA+leaf no boot
-	TLSSANs    string // KV_TLS_SAN — SANs extras (CSV)
-	TLSCert    string // KV_TLS_CERT — BYO cert PEM
-	TLSKey     string // KV_TLS_KEY — BYO key PEM
-	CAOut      string // KV_CA_OUT — onde exportar a CA pública
-	CertDir    string // KV_CERT_DIR — dir de persistência dos certs TLS gerados
-	AuthStrict bool   // KV_AUTH_STRICT — validação estrita do JWT
-	MasterKey  string // KV_MASTER_KEY — chave derivada para cifra at-rest
+	Addr         string // KV_ADDR — bind do servidor, ex: 0.0.0.0:13000
+	VaultHost    string // KV_VAULT_HOST — host:port usado no challenge/SAN/IDs (legacy, default vault)
+	TenantID     string // KV_TENANT_ID — GUID do tenant do AAD fake
+	DataPath     string // KV_DATA — caminho do arquivo SQLite
+	TLSAuto      bool   // KV_TLS_AUTO — gera CA+leaf no boot
+	TLSSANs      string // KV_TLS_SAN — SANs extras (CSV)
+	TLSCert      string // KV_TLS_CERT — BYO cert PEM
+	TLSKey       string // KV_TLS_KEY — BYO key PEM
+	CAOut        string // KV_CA_OUT — onde exportar a CA pública
+	CertDir      string // KV_CERT_DIR — dir de persistência dos certs TLS gerados
+	AuthStrict   bool   // KV_AUTH_STRICT — validação estrita do JWT
+	MasterKey    string // KV_MASTER_KEY — chave derivada para cifra at-rest
+	BaseDomain   string // KV_BASE_DOMAIN — domínio base para subdomínios de vault
+	DefaultVault string // KV_DEFAULT_VAULT — nome do vault default
 }
 
 func Load() Config {
@@ -33,6 +35,8 @@ func Load() Config {
 		CertDir:   env("KV_CERT_DIR", "./certs"),
 		MasterKey: env("KV_MASTER_KEY", ""),
 	}
+	c.BaseDomain = env("KV_BASE_DOMAIN", "kvemu.local")
+	c.DefaultVault = env("KV_DEFAULT_VAULT", "vault")
 	c.TLSAuto = envBool("KV_TLS_AUTO", true)
 	c.AuthStrict = envBool("KV_AUTH_STRICT", false)
 	return c

@@ -70,33 +70,43 @@ func startServer() (string, func()) {
 	db, err := sqlite.Open(dataPath)
 	must(err)
 	runMigrations(db)
-	db.Exec(`INSERT OR IGNORE INTO vault(id,dns_name,tenant_id,created) VALUES (?,?,?,?)`,
-		vaultHost, "https://"+vaultHost, testTenantID, time.Now().Unix())
+
+	vaultRepo := sqlite.NewVaultRepo(db)
+	vaultSvc := app.NewVaultService(vaultRepo, "local", fmt.Sprintf("%d", port))
+	defaultVault, err := vaultSvc.Create(context.Background(), "e2e", "E2E Vault", testTenantID)
+	if err != nil {
+		panic(fmt.Sprintf("create default vault: %v", err))
+	}
+	_ = defaultVault
+
+	vaultName := "e2e"
 
 	secretRepo := sqlite.NewSecretRepo(db, testMasterKey)
-	secretSvc := app.NewSecretService(secretRepo, vaultHost)
+	secretSvc := app.NewSecretService(secretRepo, vaultName)
 	keyRepo := sqlite.NewKeyRepo(db, testMasterKey)
-	keySvc := app.NewKeyService(keyRepo, vaultHost)
+	keySvc := app.NewKeyService(keyRepo, vaultName)
 	certRepo := sqlite.NewCertRepo(db)
-	certSvc := app.NewCertService(certRepo, secretSvc, keySvc, vaultHost)
+	certSvc := app.NewCertService(certRepo, secretSvc, keySvc, vaultName)
 	auditRepo := sqlite.NewAuditRepo(db)
 
 	aadKey, err := kvCrypto.NewAADKey()
 	must(err)
-	tlsBundle, err := kvCrypto.GenerateOrLoad(certDir, vaultHost, "")
+	tlsBundle, err := kvCrypto.GenerateOrLoad(certDir, vaultHost, "", "local")
 	must(err)
 
 	router := kvHTTP.NewRouter(kvHTTP.RouterConfig{
-		VaultHost:  vaultHost,
-		TenantID:   testTenantID,
-		AADKey:     aadKey,
-		AuthStrict: false,
+		AADKey:       aadKey,
+		AuthStrict:   false,
+		VaultRepo:    vaultRepo,
+		BaseDomain:   "local",
+		DefaultVault: "e2e",
 		AuditFn: func(actor, op, resource string, status int, reqID string) {
 			auditRepo.Log(context.Background(), actor, op, resource, status, reqID)
 		},
 		Secrets: kvHTTP.NewSecretHandlers(secretSvc, vaultHost),
 		Keys:    kvHTTP.NewKeyHandlers(keySvc, vaultHost),
 		Certs:   kvHTTP.NewCertHandlers(certSvc, vaultHost),
+		Vaults:  kvHTTP.NewVaultHandlers(vaultSvc, secretRepo, keyRepo, certRepo),
 	})
 
 	srv := &http.Server{

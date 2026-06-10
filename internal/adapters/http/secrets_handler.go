@@ -47,9 +47,13 @@ type listResp struct {
 	NextLink *string `json:"nextLink,omitempty"`
 }
 
-func (h *SecretHandlers) toBundle(sv *domain.SecretVersion) secretBundleResp {
+func (h *SecretHandlers) host(r *http.Request) string {
+	return vaultHostFromContext(r, h.vaultHost)
+}
+
+func (h *SecretHandlers) toBundle(sv *domain.SecretVersion, host string) secretBundleResp {
 	return secretBundleResp{
-		ID:          domain.ID(h.vaultHost, "secrets", sv.Name, sv.Version),
+		ID:          domain.ID(host, "secrets", sv.Name, sv.Version),
 		Value:       sv.Value,
 		ContentType: sv.ContentType,
 		Tags:        sv.Tags,
@@ -58,16 +62,16 @@ func (h *SecretHandlers) toBundle(sv *domain.SecretVersion) secretBundleResp {
 	}
 }
 
-func (h *SecretHandlers) toBundleNoValue(sv *domain.SecretVersion) secretBundleResp {
-	b := h.toBundle(sv)
+func (h *SecretHandlers) toBundleNoValue(sv *domain.SecretVersion, host string) secretBundleResp {
+	b := h.toBundle(sv, host)
 	b.Value = ""
-	b.ID = domain.ID(h.vaultHost, "secrets", sv.Name, sv.Version)
+	b.ID = domain.ID(host, "secrets", sv.Name, sv.Version)
 	return b
 }
 
-func (h *SecretHandlers) toDeleted(ds *domain.DeletedSecret) deletedSecretResp {
+func (h *SecretHandlers) toDeleted(ds *domain.DeletedSecret, host string) deletedSecretResp {
 	return deletedSecretResp{
-		secretBundleResp: h.toBundle(&ds.SecretVersion),
+		secretBundleResp: h.toBundle(&ds.SecretVersion, host),
 		RecoveryID:       ds.RecoveryID,
 		DeletedDate:      ds.DeletedDate,
 		ScheduledPurge:   ds.ScheduledPurge,
@@ -137,7 +141,7 @@ func (h *SecretHandlers) Set(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.toBundle(sv))
+	writeJSON(w, http.StatusOK, h.toBundle(sv, h.host(r)))
 }
 
 // ─── GET /secrets/{name}[/{version}] ─────────────────────────────────────────
@@ -151,7 +155,7 @@ func (h *SecretHandlers) Get(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.toBundle(sv))
+	writeJSON(w, http.StatusOK, h.toBundle(sv, h.host(r)))
 }
 
 // ─── GET /secrets ─────────────────────────────────────────────────────────────
@@ -168,7 +172,7 @@ func (h *SecretHandlers) List(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]any, len(list))
 	for i, sv := range list {
-		items[i] = h.toBundleNoValue(sv)
+		items[i] = h.toBundleNoValue(sv, h.host(r))
 	}
 	writeJSON(w, http.StatusOK, listResp{Value: items, NextLink: nextLink(r, next)})
 }
@@ -188,8 +192,8 @@ func (h *SecretHandlers) ListVersions(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]any, len(list))
 	for i, sv := range list {
-		b := h.toBundle(sv)
-		b.ID = domain.ID(h.vaultHost, "secrets", sv.Name, sv.Version) // versões incluem o version no id
+		b := h.toBundle(sv, h.host(r))
+		b.ID = domain.ID(h.host(r), "secrets", sv.Name, sv.Version) // versões incluem o version no id
 		items[i] = b
 	}
 	writeJSON(w, http.StatusOK, listResp{Value: items, NextLink: nextLink(r, next)})
@@ -227,7 +231,7 @@ func (h *SecretHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.toBundle(sv))
+	writeJSON(w, http.StatusOK, h.toBundle(sv, h.host(r)))
 }
 
 // ─── DELETE /secrets/{name} ───────────────────────────────────────────────────
@@ -239,7 +243,7 @@ func (h *SecretHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.toDeleted(ds))
+	writeJSON(w, http.StatusOK, h.toDeleted(ds, h.host(r)))
 }
 
 // ─── GET /deletedsecrets/{name} ───────────────────────────────────────────────
@@ -251,7 +255,7 @@ func (h *SecretHandlers) GetDeleted(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.toDeleted(ds))
+	writeJSON(w, http.StatusOK, h.toDeleted(ds, h.host(r)))
 }
 
 // ─── GET /deletedsecrets ──────────────────────────────────────────────────────
@@ -268,7 +272,7 @@ func (h *SecretHandlers) ListDeleted(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]any, len(list))
 	for i, ds := range list {
-		items[i] = h.toDeleted(ds)
+		items[i] = h.toDeleted(ds, h.host(r))
 	}
 	writeJSON(w, http.StatusOK, listResp{Value: items, NextLink: nextLink(r, next)})
 }
@@ -282,7 +286,7 @@ func (h *SecretHandlers) Recover(w http.ResponseWriter, r *http.Request) {
 		middleware.DomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.toBundle(sv))
+	writeJSON(w, http.StatusOK, h.toBundle(sv, h.host(r)))
 }
 
 // ─── DELETE /deletedsecrets/{name} ────────────────────────────────────────────

@@ -21,6 +21,15 @@ type SecretRepository interface {
 	IsDeleted(ctx context.Context, vaultID, name string) (bool, error)
 }
 
+type VaultRepository interface {
+	Create(ctx context.Context, v *domain.Vault) error
+	List(ctx context.Context) ([]*domain.Vault, error)
+	GetByName(ctx context.Context, name string) (*domain.Vault, error)
+	GetByHost(ctx context.Context, host string) (*domain.Vault, error)
+	Delete(ctx context.Context, name string) error
+	Update(ctx context.Context, name string, v *domain.Vault) error
+}
+
 type KeyRepository interface {
 	Upsert(ctx context.Context, vaultID string, k *domain.KeyVersion, privJWK map[string]any) error
 	Get(ctx context.Context, vaultID, name, version string) (*domain.KeyVersion, error)

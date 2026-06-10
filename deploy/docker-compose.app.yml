@@ -15,6 +15,10 @@ services:
     # herda tudo do docker-compose.yml, expõe CA para a app
     volumes:
       - kvemu-certs:/certs:ro
+    environment:
+      # v1.1: multi-vault via hostname-based routing
+      KV_BASE_DOMAIN:   "${KV_BASE_DOMAIN:-kvemu.local}"
+      KV_DEFAULT_VAULT: "${KV_DEFAULT_VAULT:-vault}"
 
   app:
     image: "${APP_IMAGE:-my-spring-app:latest}"
@@ -23,7 +27,7 @@ services:
         condition: service_healthy
     environment:
       # Spring Cloud Azure — aponta para o emulador
-      AZURE_KEYVAULT_ENDPOINT:              "https://kvemu:13000"
+      AZURE_KEYVAULT_ENDPOINT:              "https://vault.kvemu.local:13000"
       AZURE_TENANT_ID:                      "${KV_TENANT_ID:-a0c2a3f5-e1b3-4d6a-9c41-2cdd1f2c7e0f}"
       AZURE_CLIENT_ID:                      "dev-client"
       AZURE_CLIENT_SECRET:                  "dev-secret"
@@ -38,7 +42,7 @@ services:
     ports:
       - "8080:8080"
     extra_hosts:
-      - "kvemu:host-gateway"
+      - "vault.kvemu.local:host-gateway"
 
 volumes:
   kvemu-certs:
