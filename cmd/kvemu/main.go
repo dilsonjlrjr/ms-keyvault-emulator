@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/tls"
 	"database/sql"
+	"embed"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,6 +20,9 @@ import (
 	"github.com/dilsonrabelo/kvemu/internal/config"
 	"github.com/dilsonrabelo/kvemu/internal/domain"
 )
+
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
 
 var version = "dev"
 
@@ -70,7 +75,7 @@ func buildStack() *stack {
 
 	db, err := sqlite.Open(cfg.DataPath)
 	mustOK(err, "sqlite open")
-	mustOK(migrate(db, "migrations"), "migrate")
+	mustOK(migrate(db, migrationsFS), "migrate")
 	mustOK(ensureVault(db, cfg.VaultHost, cfg.TenantID), "ensure vault")
 
 	secretRepo := sqlite.NewSecretRepo(db, cfg.MasterKey)
@@ -189,6 +194,7 @@ func runSeed() {
 		{"db-password", "sup3rS3cr3t!", "text/plain"},
 		{"api-key", "sk-dev-1234567890abcdef", "text/plain"},
 		{"connection-string", "Server=localhost;Database=devdb;User=sa;Password=dev!", "text/plain"},
+		{"COSMO_DB_URL", "https://cosmos.example.com", "text/plain"},
 	}
 	for _, seed := range seeds {
 		sv, err := s.secretSvc.Set(ctx, seed.name, seed.value, seed.ct, nil, attrs)
@@ -249,8 +255,8 @@ func loadTLS(cfg config.Config) *kvCrypto.TLSBundle {
 	return nil
 }
 
-func migrate(db *sql.DB, dir string) error {
-	entries, err := os.ReadDir(dir)
+func migrate(db *sql.DB, fsys embed.FS) error {
+	entries, err := fs.ReadDir(fsys, "migrations")
 	if err != nil {
 		return fmt.Errorf("migrations dir: %w", err)
 	}
@@ -258,11 +264,11 @@ func migrate(db *sql.DB, dir string) error {
 		if e.IsDir() {
 			continue
 		}
-		sql, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		data, err := fsys.ReadFile("migrations/" + e.Name())
 		if err != nil {
 			return fmt.Errorf("read %s: %w", e.Name(), err)
 		}
-		if _, err := db.Exec(string(sql)); err != nil {
+		if _, err := db.Exec(string(data)); err != nil {
 			return fmt.Errorf("exec %s: %w", e.Name(), err)
 		}
 		slog.Debug("migration applied", "file", e.Name())
