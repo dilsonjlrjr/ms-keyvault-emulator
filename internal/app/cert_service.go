@@ -162,6 +162,55 @@ func (s *CertService) Purge(ctx context.Context, name string) error {
 	return s.certRepo.Purge(ctx, s.vaultID, name)
 }
 
+// ─── Contacts ─────────────────────────────────────────────────────────────────
+
+func (s *CertService) GetContacts(ctx context.Context) ([]map[string]any, error) {
+	return s.certRepo.GetContacts(ctx, s.vaultID)
+}
+
+func (s *CertService) SetContacts(ctx context.Context, contacts []map[string]any) error {
+	return s.certRepo.SetContacts(ctx, s.vaultID, contacts)
+}
+
+func (s *CertService) DeleteContacts(ctx context.Context) error {
+	return s.certRepo.DeleteContacts(ctx, s.vaultID)
+}
+
+// ─── Issuers ──────────────────────────────────────────────────────────────────
+
+func (s *CertService) GetIssuer(ctx context.Context, name string) (*sqlite.IssuerData, error) {
+	return s.certRepo.GetIssuer(ctx, s.vaultID, name)
+}
+
+func (s *CertService) SetIssuer(ctx context.Context, name string, provider string, credentials, orgDetails, attrs map[string]any) (*sqlite.IssuerData, error) {
+	iss := &sqlite.IssuerData{
+		Name:        name,
+		Provider:    provider,
+		Credentials: credentials,
+		OrgDetails:  orgDetails,
+		Attributes:  attrs,
+	}
+	if err := s.certRepo.SetIssuer(ctx, s.vaultID, iss); err != nil {
+		return nil, err
+	}
+	return iss, nil
+}
+
+func (s *CertService) DeleteIssuer(ctx context.Context, name string) (*sqlite.IssuerData, error) {
+	iss, err := s.certRepo.GetIssuer(ctx, s.vaultID, name)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.certRepo.DeleteIssuer(ctx, s.vaultID, name); err != nil {
+		return nil, err
+	}
+	return iss, nil
+}
+
+func (s *CertService) ListIssuers(ctx context.Context) ([]*sqlite.IssuerData, error) {
+	return s.certRepo.ListIssuers(ctx, s.vaultID)
+}
+
 // ─── geração X.509 ────────────────────────────────────────────────────────────
 
 type x509Props struct {

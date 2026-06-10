@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/dilsonrabelo/kvemu/internal/adapters/http/middleware"
+	"github.com/dilsonrabelo/kvemu/internal/adapters/persistence/sqlite"
 	"github.com/dilsonrabelo/kvemu/internal/app"
 	"github.com/dilsonrabelo/kvemu/internal/domain"
 )
@@ -239,27 +240,102 @@ func (h *CertHandlers) Purge(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ─── Contacts / Issuers (stubs MVP) ──────────────────────────────────────────
+// ─── Contacts / Issuers (persistent) ──────────────────────────────────────────
 
 func (h *CertHandlers) ContactsGet(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"id": "https://" + h.vaultHost + "/certificates/contacts", "contactList": []any{}})
+	contacts, err := h.svc.GetContacts(r.Context())
+	if err != nil {
+		middleware.DomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":          "https://" + h.vaultHost + "/certificates/contacts",
+		"contactList": contacts,
+	})
 }
+
 func (h *CertHandlers) ContactsSet(w http.ResponseWriter, r *http.Request) {
-	var body map[string]any
-	json.NewDecoder(r.Body).Decode(&body)
-	writeJSON(w, http.StatusOK, body)
+	var body struct {
+		ContactList []map[string]any `json:"contactList"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		middleware.DomainError(w, domain.ErrBadParam{Msg: "invalid body"})
+		return
+	}
+	if err := h.svc.SetContacts(r.Context(), body.ContactList); err != nil {
+		middleware.DomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":          "https://" + h.vaultHost + "/certificates/contacts",
+		"contactList": body.ContactList,
+	})
 }
+
 func (h *CertHandlers) ContactsDelete(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"contactList": []any{}})
+	if err := h.svc.DeleteContacts(r.Context()); err != nil {
+		middleware.DomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":          "https://" + h.vaultHost + "/certificates/contacts",
+		"contactList": []any{},
+	})
 }
+
 func (h *CertHandlers) IssuerGet(w http.ResponseWriter, r *http.Request) {
-	middleware.DomainError(w, domain.ErrNotFound{Kind: "CertificateIssuer", Name: chi.URLParam(r, "name")})
+	name := chi.URLParam(r, "name")
+	iss, err := h.svc.GetIssuer(r.Context(), name)
+	if err != nil {
+		middleware.DomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, issuerToJSON(iss, h.vaultHost))
 }
+
 func (h *CertHandlers) IssuerSet(w http.ResponseWriter, r *http.Request) {
-	var body map[string]any
-	json.NewDecoder(r.Body).Decode(&body)
-	writeJSON(w, http.StatusOK, body)
+	name := chi.URLParam(r, "name")
+	var body struct {
+		Provider    string         `json:"provider"`
+		Credentials map[string]any `json:"credentials"`
+		OrgDetails  map[string]any `json:"org_details"`
+		Attributes  map[string]any `json:"attributes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		middleware.DomainError(w, domain.ErrBadParam{Msg: "invalid body"})
+		return
+	}
+	iss, err := h.svc.SetIssuer(r.Context(), name, body.Provider, body.Credentials, body.OrgDetails, body.Attributes)
+	if err != nil {
+		middleware.DomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, issuerToJSON(iss, h.vaultHost))
 }
+
 func (h *CertHandlers) IssuerDelete(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{})
+	name := chi.URLParam(r, "name")
+	iss, err := h.svc.DeleteIssuer(r.Context(), name)
+	if err != nil {
+		middleware.DomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, issuerToJSON(iss, h.vaultHost))
+}
+
+func issuerToJSON(iss *sqlite.IssuerData, vaultHost string) map[string]any {
+	out := map[string]any{
+		"id":       domain.ID(vaultHost, "certificates/issuers", iss.Name, ""),
+		"provider": iss.Provider,
+	}
+	if iss.Credentials != nil {
+		out["credentials"] = iss.Credentials
+	}
+	if iss.OrgDetails != nil {
+		out["org_details"] = iss.OrgDetails
+	}
+	if iss.Attributes != nil {
+		out["attributes"] = iss.Attributes
+	}
+	return out
 }

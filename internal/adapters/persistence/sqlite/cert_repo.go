@@ -361,3 +361,128 @@ func (r *CertRepo) Purge(ctx context.Context, vaultID, name string) error {
 	}
 	return nil
 }
+
+// ─── Contacts ─────────────────────────────────────────────────────────────────
+
+func (r *CertRepo) GetContacts(ctx context.Context, vaultID string) ([]map[string]any, error) {
+	var contactsJSON string
+	err := r.db.QueryRowContext(ctx,
+		`SELECT contacts_json FROM vcert_contacts WHERE vault_id=?`, vaultID).Scan(&contactsJSON)
+	if err == sql.ErrNoRows {
+		return []map[string]any{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var contacts []map[string]any
+	json.Unmarshal([]byte(contactsJSON), &contacts)
+	return contacts, nil
+}
+
+func (r *CertRepo) SetContacts(ctx context.Context, vaultID string, contacts []map[string]any) error {
+	now := time.Now().Unix()
+	b, _ := json.Marshal(contacts)
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO vcert_contacts(vault_id, contacts_json, created, updated) VALUES(?,?,?,?)
+		ON CONFLICT(vault_id) DO UPDATE SET contacts_json=excluded.contacts_json, updated=excluded.updated`,
+		vaultID, string(b), now, now)
+	return err
+}
+
+func (r *CertRepo) DeleteContacts(ctx context.Context, vaultID string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM vcert_contacts WHERE vault_id=?`, vaultID)
+	return err
+}
+
+// ─── Issuers ──────────────────────────────────────────────────────────────────
+
+type IssuerData struct {
+	Name        string
+	Provider    string
+	Credentials map[string]any
+	OrgDetails  map[string]any
+	Attributes  map[string]any
+	Created     int64
+	Updated     int64
+}
+
+func (r *CertRepo) GetIssuer(ctx context.Context, vaultID, name string) (*IssuerData, error) {
+	var (
+		provider, credJSON, orgJSON, attrJSON string
+		created, updated                      int64
+	)
+	err := r.db.QueryRowContext(ctx,
+		`SELECT provider, credentials_json, org_details_json, attributes_json, created, updated
+		 FROM vcert_issuer WHERE vault_id=? AND name=?`, vaultID, name,
+	).Scan(&provider, &credJSON, &orgJSON, &attrJSON, &created, &updated)
+	if err == sql.ErrNoRows {
+		return nil, domain.ErrNotFound{Kind: "CertificateIssuer", Name: name}
+	}
+	if err != nil {
+		return nil, err
+	}
+	iss := &IssuerData{Name: name, Provider: provider, Created: created, Updated: updated}
+	json.Unmarshal([]byte(credJSON), &iss.Credentials)
+	json.Unmarshal([]byte(orgJSON), &iss.OrgDetails)
+	json.Unmarshal([]byte(attrJSON), &iss.Attributes)
+	return iss, nil
+}
+
+func (r *CertRepo) SetIssuer(ctx context.Context, vaultID string, iss *IssuerData) error {
+	now := time.Now().Unix()
+	iss.Created = now
+	iss.Updated = now
+	credJSON, _ := json.Marshal(iss.Credentials)
+	orgJSON, _ := json.Marshal(iss.OrgDetails)
+	attrJSON, _ := json.Marshal(iss.Attributes)
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO vcert_issuer(vault_id, name, provider, credentials_json, org_details_json, attributes_json, created, updated)
+		VALUES(?,?,?,?,?,?,?,?)
+		ON CONFLICT(vault_id, name) DO UPDATE SET
+			provider=excluded.provider,
+			credentials_json=excluded.credentials_json,
+			org_details_json=excluded.org_details_json,
+			attributes_json=excluded.attributes_json,
+			updated=excluded.updated`,
+		vaultID, iss.Name, iss.Provider, string(credJSON), string(orgJSON), string(attrJSON), now, now)
+	return err
+}
+
+func (r *CertRepo) DeleteIssuer(ctx context.Context, vaultID, name string) error {
+	res, err := r.db.ExecContext(ctx,
+		`DELETE FROM vcert_issuer WHERE vault_id=? AND name=?`, vaultID, name)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return domain.ErrNotFound{Kind: "CertificateIssuer", Name: name}
+	}
+	return nil
+}
+
+func (r *CertRepo) ListIssuers(ctx context.Context, vaultID string) ([]*IssuerData, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT name, provider, credentials_json, org_details_json, attributes_json, created, updated
+		 FROM vcert_issuer WHERE vault_id=? ORDER BY name`, vaultID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*IssuerData
+	for rows.Next() {
+		var (
+			name, provider, credJSON, orgJSON, attrJSON string
+			created, updated                            int64
+		)
+		if err := rows.Scan(&name, &provider, &credJSON, &orgJSON, &attrJSON, &created, &updated); err != nil {
+			return nil, err
+		}
+		iss := &IssuerData{Name: name, Provider: provider, Created: created, Updated: updated}
+		json.Unmarshal([]byte(credJSON), &iss.Credentials)
+		json.Unmarshal([]byte(orgJSON), &iss.OrgDetails)
+		json.Unmarshal([]byte(attrJSON), &iss.Attributes)
+		list = append(list, iss)
+	}
+	return list, rows.Err()
+}
