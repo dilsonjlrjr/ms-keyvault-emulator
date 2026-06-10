@@ -37,6 +37,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	// AAD fake — sem auth (são os endpoints de token/discovery)
 	aad := newAADHandler(cfg.AADKey, cfg.VaultHost)
+	r.Get("/{tenant}/discovery/instance", aad.instanceDiscovery)
 	r.Get("/{tenant}/v2.0/.well-known/openid-configuration", aad.oidcV2)
 	r.Get("/{tenant}/.well-known/openid-configuration", aad.oidcV1)
 	r.Get("/{tenant}/discovery/v2.0/keys", aad.jwks)
@@ -46,7 +47,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	// data-plane — challenge + auth + audit obrigatórios
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Challenge(cfg.VaultHost, cfg.TenantID))
-		r.Use(middleware.Auth(cfg.AADKey, cfg.AuthStrict))
+		r.Use(middleware.Auth(cfg.AADKey, cfg.AuthStrict, cfg.VaultHost))
 		if cfg.AuditFn != nil {
 			r.Use(middleware.Audit(cfg.AuditFn))
 		}

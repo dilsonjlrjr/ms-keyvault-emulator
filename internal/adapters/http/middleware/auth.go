@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -20,7 +21,8 @@ func ActorFromContext(r *http.Request) string {
 
 // Auth valida o Bearer token. Modo leniente (strict=false): verifica só estrutura/exp.
 // Modo strict: valida assinatura RS256 + aud + exp via JWKS interno.
-func Auth(aadKey *kvCrypto.AADKey, strict bool) func(http.Handler) http.Handler {
+func Auth(aadKey *kvCrypto.AADKey, strict bool, vaultHost string) func(http.Handler) http.Handler {
+	audience := fmt.Sprintf("https://%s", vaultHost)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			bearer := r.Header.Get("Authorization")
@@ -29,7 +31,7 @@ func Auth(aadKey *kvCrypto.AADKey, strict bool) func(http.Handler) http.Handler 
 				writeKVError(w, http.StatusUnauthorized, "Unauthorized", "missing or invalid Authorization header")
 				return
 			}
-			if err := aadKey.ValidateToken(token, strict); err != nil {
+			if err := aadKey.ValidateToken(token, strict, audience); err != nil {
 				writeKVError(w, http.StatusForbidden, "Forbidden", err.Error())
 				return
 			}

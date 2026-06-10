@@ -39,7 +39,7 @@ func legacySdkParse(header string) (map[string]string, error) {
 // TestBuildChallenge_GoldenString verifica o valor byte-a-byte esperado.
 func TestBuildChallenge_GoldenString(t *testing.T) {
 	got := middleware.BuildChallenge(testVaultHost, testTenantID)
-	want := `Bearer authorization="https://lab-dilson:13000/a0c2a3f5-e1b3-4d6a-9c41-2cdd1f2c7e0f", resource="https://vault.azure.net"`
+	want := `Bearer authorization="https://lab-dilson:13000/a0c2a3f5-e1b3-4d6a-9c41-2cdd1f2c7e0f", resource="https://lab-dilson"`
 	if got != want {
 		t.Fatalf("header divergiu do canônico:\n got:  %s\n want: %s", got, want)
 	}
@@ -93,7 +93,7 @@ func TestChallengeMiddleware_SurviveLegacySdkParser(t *testing.T) {
 	if _, ok := attrs["authorization"]; !ok {
 		t.Fatal("campo 'authorization' ausente — SDK legado não consegue extrair tenant/authority")
 	}
-	if attrs["resource"] != "https://vault.azure.net" {
+	if attrs["resource"] != "https://lab-dilson" {
 		t.Fatalf("campo 'resource' errado: %q", attrs["resource"])
 	}
 }

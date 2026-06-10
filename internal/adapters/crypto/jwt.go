@@ -32,10 +32,10 @@ func NewAADKey() (*AADKey, error) {
 }
 
 // IssueToken emite um JWT RS256 compatível com o que o azure-identity espera.
-func (k *AADKey) IssueToken(issuer, clientID, tenantID string) (string, int64, error) {
+func (k *AADKey) IssueToken(issuer, clientID, tenantID, audience string) (string, int64, error) {
 	exp := time.Now().Add(time.Hour).Unix()
 	claims := gojwt.MapClaims{
-		"aud":   "https://vault.azure.net",
+		"aud":   audience,
 		"iss":   issuer,
 		"appid": clientID,
 		"tid":   tenantID,
@@ -69,11 +69,16 @@ func (k *AADKey) JWKS() ([]byte, error) {
 }
 
 // OIDCConfig retorna o JSON de discovery OIDC mínimo.
-func OIDCConfig(issuer string) []byte {
+// vaultHost ex: "vault.kvemu.local:13000", tenantID ex: "a0c2a..."
+func OIDCConfig(vaultHost, tenantID string) []byte {
+	issuer := fmt.Sprintf("https://%s/%s/v2.0", vaultHost, tenantID)
+	tokenEP := fmt.Sprintf("https://%s/%s/oauth2/v2.0/token", vaultHost, tenantID)
+	jwksEP := fmt.Sprintf("https://%s/%s/discovery/v2.0/keys", vaultHost, tenantID)
+
 	doc := map[string]any{
 		"issuer":                                issuer,
-		"token_endpoint":                        issuer + "/oauth2/v2.0/token",
-		"jwks_uri":                              issuer + "/discovery/v2.0/keys",
+		"token_endpoint":                        tokenEP,
+		"jwks_uri":                              jwksEP,
 		"response_modes_supported":              []string{"query", "fragment", "form_post"},
 		"subject_types_supported":               []string{"pairwise"},
 		"id_token_signing_alg_values_supported": []string{"RS256"},
@@ -85,7 +90,7 @@ func OIDCConfig(issuer string) []byte {
 }
 
 // ValidateToken valida um JWT (strict) ou só confere estrutura (leniente).
-func (k *AADKey) ValidateToken(tokenStr string, strict bool) error {
+func (k *AADKey) ValidateToken(tokenStr string, strict bool, audience string) error {
 	if !strict {
 		// leniente: só verifica estrutura (3 partes) e exp
 		parser := gojwt.NewParser(gojwt.WithoutClaimsValidation())
@@ -101,7 +106,7 @@ func (k *AADKey) ValidateToken(tokenStr string, strict bool) error {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return &k.Private.PublicKey, nil
-	}, gojwt.WithAudience("https://vault.azure.net"))
+	}, gojwt.WithAudience(audience))
 	return err
 }
 

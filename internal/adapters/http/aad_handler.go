@@ -27,14 +27,14 @@ func (h *aadHandler) issuer(tenantID string) string {
 func (h *aadHandler) oidcV2(w http.ResponseWriter, r *http.Request) {
 	tenant := chi.URLParam(r, "tenant")
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(kvCrypto.OIDCConfig(h.issuer(tenant)))
+	w.Write(kvCrypto.OIDCConfig(h.vaultHost, tenant))
 }
 
 // OIDC discovery v1 — GET /{tenant}/.well-known/openid-configuration
 func (h *aadHandler) oidcV1(w http.ResponseWriter, r *http.Request) {
 	tenant := chi.URLParam(r, "tenant")
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(kvCrypto.OIDCConfig(h.issuer(tenant)))
+	w.Write(kvCrypto.OIDCConfig(h.vaultHost, tenant))
 }
 
 // JWKS — GET /{tenant}/discovery/v2.0/keys
@@ -60,6 +60,27 @@ func (h *aadHandler) tokenV1(w http.ResponseWriter, r *http.Request) {
 	h.handleToken(w, r, tenant)
 }
 
+// Instance discovery — GET /{tenant}/discovery/instance
+// MSAL4J usa esse endpoint para validar a autoridade antes de obter token.
+func (h *aadHandler) instanceDiscovery(w http.ResponseWriter, r *http.Request) {
+	tenant := chi.URLParam(r, "tenant")
+	host := h.vaultHost
+
+	resp := map[string]any{
+		"tenant_discovery_endpoint": fmt.Sprintf("https://%s/%s/v2.0/.well-known/openid-configuration", host, tenant),
+		"api-version":               "1.1",
+		"metadata": []map[string]any{
+			{
+				"preferred_network": host,
+				"preferred_cache":   host,
+				"aliases":           []string{host, "login.microsoftonline.com"},
+			},
+		},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
 func (h *aadHandler) handleToken(w http.ResponseWriter, r *http.Request, tenantID string) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -78,7 +99,8 @@ func (h *aadHandler) handleToken(w http.ResponseWriter, r *http.Request, tenantI
 	}
 
 	issuer := h.issuer(tenantID)
-	token, exp, err := h.key.IssueToken(issuer, clientID, tenantID)
+	audience := fmt.Sprintf("https://%s", h.vaultHost)
+	token, exp, err := h.key.IssueToken(issuer, clientID, tenantID, audience)
 	if err != nil {
 		http.Error(w, "token error", http.StatusInternalServerError)
 		return
