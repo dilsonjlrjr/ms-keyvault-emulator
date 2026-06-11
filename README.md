@@ -56,9 +56,15 @@ docker cp kvemu:/certs/ca.pem ./ca.pem
 
 # Or from the web panel at http://<host>:3000/ca
 
-# Linux / macOS — import into system trust store:
-sudo cp ca.pem /usr/local/share/ca-certificates/kvemu.crt && sudo update-ca-certificates   # Debian/Ubuntu
-sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ca.pem  # macOS
+# Linux / macOS / Windows — import into system trust store:
+# Debian/Ubuntu:
+sudo cp ca.pem /usr/local/share/ca-certificates/kvemu.crt && sudo update-ca-certificates
+# RHEL/Fedora:
+sudo cp ca.pem /etc/pki/ca-trust/source/anchors/kvemu.crt && sudo update-ca-trust
+# macOS:
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ca.pem
+# Windows (PowerShell — run as Administrator):
+Import-Certificate -FilePath .\ca.pem -CertStoreLocation Cert:\LocalMachine\Root
 ```
 
 #### 2. Configure /etc/hosts
@@ -157,9 +163,15 @@ docker cp kvemu:/certs/ca.pem ./ca.pem
 
 # Ou pelo painel web em http://<host>:3000/ca
 
-# Linux / macOS — importar no trust store do sistema:
-sudo cp ca.pem /usr/local/share/ca-certificates/kvemu.crt && sudo update-ca-certificates   # Debian/Ubuntu
-sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ca.pem  # macOS
+# Linux / macOS / Windows — importar no trust store do sistema:
+# Debian/Ubuntu:
+sudo cp ca.pem /usr/local/share/ca-certificates/kvemu.crt && sudo update-ca-certificates
+# RHEL/Fedora:
+sudo cp ca.pem /etc/pki/ca-trust/source/anchors/kvemu.crt && sudo update-ca-trust
+# macOS:
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ca.pem
+# Windows (PowerShell — executar como Administrador):
+Import-Certificate -FilePath .\ca.pem -CertStoreLocation Cert:\LocalMachine\Root
 ```
 
 #### 2. Configurar /etc/hosts
