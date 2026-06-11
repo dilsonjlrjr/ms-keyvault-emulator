@@ -9,6 +9,7 @@ import (
 	kvCrypto "github.com/dilsonrabelo/kvemu/internal/adapters/crypto"
 	"github.com/dilsonrabelo/kvemu/internal/domain"
 	"github.com/dilsonrabelo/kvemu/internal/ports"
+	"github.com/dilsonrabelo/kvemu/internal/vaultctx"
 )
 
 type KeyService struct {
@@ -20,6 +21,14 @@ type KeyService struct {
 
 func NewKeyService(repo ports.KeyRepository, vaultID string) *KeyService {
 	return &KeyService{repo: repo, Repo: repo, vaultID: vaultID}
+}
+
+// vid resolve o vault da request via context, com fallback no vault default do boot.
+func (s *KeyService) vid(ctx context.Context) string {
+	if v := vaultctx.NameFrom(ctx); v != "" {
+		return v
+	}
+	return s.vaultID
 }
 
 func (s *KeyService) Create(ctx context.Context, name, kty, crv string, keySize int,
@@ -54,10 +63,10 @@ func (s *KeyService) store(ctx context.Context, name, kty, crv string, keySize i
 	if kv.Attributes.RecoveryLevel == "" {
 		kv.Attributes.RecoveryLevel = domain.RecoveryLevelPurgeable
 	}
-	if err := s.repo.Upsert(ctx, s.vaultID, kv, privJWK); err != nil {
+	if err := s.repo.Upsert(ctx, s.vid(ctx), kv, privJWK); err != nil {
 		return nil, err
 	}
-	kv.PubJWK["kid"] = domain.ID(s.vaultID, "keys", name, kv.Version)
+	kv.PubJWK["kid"] = domain.ID(s.vid(ctx), "keys", name, kv.Version)
 	return kv, nil
 }
 
@@ -67,53 +76,53 @@ func (s *KeyService) Get(ctx context.Context, name, version string) (*domain.Key
 		err error
 	)
 	if version == "" {
-		kv, err = s.repo.GetCurrent(ctx, s.vaultID, name)
+		kv, err = s.repo.GetCurrent(ctx, s.vid(ctx), name)
 	} else {
-		kv, err = s.repo.Get(ctx, s.vaultID, name, version)
+		kv, err = s.repo.Get(ctx, s.vid(ctx), name, version)
 	}
 	if err != nil {
 		return nil, err
 	}
-	kv.PubJWK["kid"] = domain.ID(s.vaultID, "keys", kv.Name, kv.Version)
+	kv.PubJWK["kid"] = domain.ID(s.vid(ctx), "keys", kv.Name, kv.Version)
 	return kv, nil
 }
 
 func (s *KeyService) List(ctx context.Context, max int, skipToken string) ([]*domain.KeyVersion, string, error) {
-	return s.repo.List(ctx, s.vaultID, max, skipToken)
+	return s.repo.List(ctx, s.vid(ctx), max, skipToken)
 }
 
 func (s *KeyService) ListVersions(ctx context.Context, name string, max int, skipToken string) ([]*domain.KeyVersion, string, error) {
-	return s.repo.ListVersions(ctx, s.vaultID, name, max, skipToken)
+	return s.repo.ListVersions(ctx, s.vid(ctx), name, max, skipToken)
 }
 
 func (s *KeyService) Update(ctx context.Context, name, version string,
 	attrs domain.Attributes, keyOps []string, tags map[string]string) (*domain.KeyVersion, error) {
 
-	if err := s.repo.UpdateAttributes(ctx, s.vaultID, name, version, attrs, keyOps, tags); err != nil {
+	if err := s.repo.UpdateAttributes(ctx, s.vid(ctx), name, version, attrs, keyOps, tags); err != nil {
 		return nil, err
 	}
-	return s.repo.Get(ctx, s.vaultID, name, version)
+	return s.repo.Get(ctx, s.vid(ctx), name, version)
 }
 
 func (s *KeyService) Delete(ctx context.Context, name string) (*domain.DeletedKey, error) {
 	schedPurge := time.Now().AddDate(0, 0, defaultRetentionDays).Unix()
-	return s.repo.SoftDelete(ctx, s.vaultID, name, schedPurge)
+	return s.repo.SoftDelete(ctx, s.vid(ctx), name, schedPurge)
 }
 
 func (s *KeyService) GetDeleted(ctx context.Context, name string) (*domain.DeletedKey, error) {
-	return s.repo.GetDeleted(ctx, s.vaultID, name)
+	return s.repo.GetDeleted(ctx, s.vid(ctx), name)
 }
 
 func (s *KeyService) ListDeleted(ctx context.Context, max int, skipToken string) ([]*domain.DeletedKey, string, error) {
-	return s.repo.ListDeleted(ctx, s.vaultID, max, skipToken)
+	return s.repo.ListDeleted(ctx, s.vid(ctx), max, skipToken)
 }
 
 func (s *KeyService) Recover(ctx context.Context, name string) (*domain.KeyVersion, error) {
-	return s.repo.Recover(ctx, s.vaultID, name)
+	return s.repo.Recover(ctx, s.vid(ctx), name)
 }
 
 func (s *KeyService) Purge(ctx context.Context, name string) error {
-	return s.repo.Purge(ctx, s.vaultID, name)
+	return s.repo.Purge(ctx, s.vid(ctx), name)
 }
 
 // ─── operações criptográficas ─────────────────────────────────────────────────
@@ -141,7 +150,7 @@ func (s *KeyService) Decrypt(ctx context.Context, name, version, alg string, cip
 	if !kv.Attributes.Enabled {
 		return nil, "", domain.ErrForbidden{Msg: "key is disabled"}
 	}
-	priv, err := s.repo.GetPriv(ctx, s.vaultID, kv.Name, kv.Version)
+	priv, err := s.repo.GetPriv(ctx, s.vid(ctx), kv.Name, kv.Version)
 	if err != nil {
 		return nil, "", err
 	}
@@ -161,7 +170,7 @@ func (s *KeyService) Sign(ctx context.Context, name, version, alg string, data [
 	if !kv.Attributes.Enabled {
 		return nil, "", domain.ErrForbidden{Msg: "key is disabled"}
 	}
-	priv, err := s.repo.GetPriv(ctx, s.vaultID, kv.Name, kv.Version)
+	priv, err := s.repo.GetPriv(ctx, s.vid(ctx), kv.Name, kv.Version)
 	if err != nil {
 		return nil, "", err
 	}
@@ -202,7 +211,7 @@ func (s *KeyService) UnwrapKey(ctx context.Context, name, version, alg string, w
 	if err != nil {
 		return nil, "", err
 	}
-	priv, err := s.repo.GetPriv(ctx, s.vaultID, kv.Name, kv.Version)
+	priv, err := s.repo.GetPriv(ctx, s.vid(ctx), kv.Name, kv.Version)
 	if err != nil {
 		return nil, "", err
 	}

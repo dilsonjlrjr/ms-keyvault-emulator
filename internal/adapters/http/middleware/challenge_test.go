@@ -1,7 +1,6 @@
 package middleware_test
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/dilsonrabelo/kvemu/internal/adapters/http/middleware"
 	"github.com/dilsonrabelo/kvemu/internal/domain"
+	"github.com/dilsonrabelo/kvemu/internal/vaultctx"
 )
 
 const (
@@ -24,7 +24,7 @@ func withVault(r *http.Request) *http.Request {
 		Host:     testVaultHost,
 		TenantID: testTenantID,
 	}
-	ctx := context.WithValue(r.Context(), middleware.CtxKeyVault, v)
+	ctx := vaultctx.With(r.Context(), v)
 	return r.WithContext(ctx)
 }
 

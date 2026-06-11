@@ -20,6 +20,7 @@ import (
 	"github.com/dilsonrabelo/kvemu/internal/adapters/persistence/sqlite"
 	"github.com/dilsonrabelo/kvemu/internal/domain"
 	"github.com/dilsonrabelo/kvemu/internal/ports"
+	"github.com/dilsonrabelo/kvemu/internal/vaultctx"
 )
 
 type CertService struct {
@@ -32,6 +33,14 @@ type CertService struct {
 
 func NewCertService(certRepo *sqlite.CertRepo, secretSvc *SecretService, keySvc *KeyService, vaultID string) *CertService {
 	return &CertService{certRepo: certRepo, secretSvc: secretSvc, keySvc: keySvc, keyRepo: keySvc.Repo, vaultID: vaultID}
+}
+
+// vid resolve o vault da request via context, com fallback no vault default do boot.
+func (s *CertService) vid(ctx context.Context) string {
+	if v := vaultctx.NameFrom(ctx); v != "" {
+		return v
+	}
+	return s.vaultID
 }
 
 // Create cria um certificado self-signed de acordo com a policy.
@@ -47,7 +56,7 @@ func (s *CertService) Create(ctx context.Context, name string, policy map[string
 	}
 
 	// gera o certificado X.509
-	privJWK, err := s.keyRepo.GetPriv(ctx, s.vaultID, backingKey.Name, backingKey.Version)
+	privJWK, err := s.keyRepo.GetPriv(ctx, s.vid(ctx), backingKey.Name, backingKey.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +89,7 @@ func (s *CertService) Create(ctx context.Context, name string, policy map[string
 	if cv.Attributes.RecoveryLevel == "" {
 		cv.Attributes.RecoveryLevel = domain.RecoveryLevelPurgeable
 	}
-	if err := s.certRepo.Upsert(ctx, s.vaultID, cv, policy); err != nil {
+	if err := s.certRepo.Upsert(ctx, s.vid(ctx), cv, policy); err != nil {
 		return nil, err
 	}
 	return cv, nil
@@ -112,7 +121,7 @@ func (s *CertService) Import(ctx context.Context, name string, certPEM string, p
 	if cv.Attributes.RecoveryLevel == "" {
 		cv.Attributes.RecoveryLevel = domain.RecoveryLevelPurgeable
 	}
-	if err := s.certRepo.Upsert(ctx, s.vaultID, cv, policy); err != nil {
+	if err := s.certRepo.Upsert(ctx, s.vid(ctx), cv, policy); err != nil {
 		return nil, err
 	}
 	return cv, nil
@@ -120,66 +129,66 @@ func (s *CertService) Import(ctx context.Context, name string, certPEM string, p
 
 func (s *CertService) Get(ctx context.Context, name, version string) (*domain.CertVersion, map[string]any, error) {
 	if version == "" {
-		return s.certRepo.GetCurrent(ctx, s.vaultID, name)
+		return s.certRepo.GetCurrent(ctx, s.vid(ctx), name)
 	}
-	return s.certRepo.Get(ctx, s.vaultID, name, version)
+	return s.certRepo.Get(ctx, s.vid(ctx), name, version)
 }
 
 func (s *CertService) GetPolicy(ctx context.Context, name string) (map[string]any, error) {
-	return s.certRepo.GetPolicy(ctx, s.vaultID, name)
+	return s.certRepo.GetPolicy(ctx, s.vid(ctx), name)
 }
 
 func (s *CertService) UpdatePolicy(ctx context.Context, name string, policy map[string]any) error {
-	return s.certRepo.UpdatePolicy(ctx, s.vaultID, name, policy)
+	return s.certRepo.UpdatePolicy(ctx, s.vid(ctx), name, policy)
 }
 
 func (s *CertService) List(ctx context.Context, max int, tok string) ([]*domain.CertVersion, string, error) {
-	return s.certRepo.List(ctx, s.vaultID, max, tok)
+	return s.certRepo.List(ctx, s.vid(ctx), max, tok)
 }
 
 func (s *CertService) ListVersions(ctx context.Context, name string, max int, tok string) ([]*domain.CertVersion, string, error) {
-	return s.certRepo.ListVersions(ctx, s.vaultID, name, max, tok)
+	return s.certRepo.ListVersions(ctx, s.vid(ctx), name, max, tok)
 }
 
 func (s *CertService) Delete(ctx context.Context, name string) (*domain.DeletedCert, error) {
 	schedPurge := time.Now().AddDate(0, 0, defaultRetentionDays).Unix()
-	return s.certRepo.SoftDelete(ctx, s.vaultID, name, schedPurge)
+	return s.certRepo.SoftDelete(ctx, s.vid(ctx), name, schedPurge)
 }
 
 func (s *CertService) GetDeleted(ctx context.Context, name string) (*domain.DeletedCert, error) {
-	return s.certRepo.GetDeleted(ctx, s.vaultID, name)
+	return s.certRepo.GetDeleted(ctx, s.vid(ctx), name)
 }
 
 func (s *CertService) ListDeleted(ctx context.Context, max int, tok string) ([]*domain.DeletedCert, string, error) {
-	return s.certRepo.ListDeleted(ctx, s.vaultID, max, tok)
+	return s.certRepo.ListDeleted(ctx, s.vid(ctx), max, tok)
 }
 
 func (s *CertService) Recover(ctx context.Context, name string) (*domain.CertVersion, error) {
-	return s.certRepo.Recover(ctx, s.vaultID, name)
+	return s.certRepo.Recover(ctx, s.vid(ctx), name)
 }
 
 func (s *CertService) Purge(ctx context.Context, name string) error {
-	return s.certRepo.Purge(ctx, s.vaultID, name)
+	return s.certRepo.Purge(ctx, s.vid(ctx), name)
 }
 
 // ─── Contacts ─────────────────────────────────────────────────────────────────
 
 func (s *CertService) GetContacts(ctx context.Context) ([]map[string]any, error) {
-	return s.certRepo.GetContacts(ctx, s.vaultID)
+	return s.certRepo.GetContacts(ctx, s.vid(ctx))
 }
 
 func (s *CertService) SetContacts(ctx context.Context, contacts []map[string]any) error {
-	return s.certRepo.SetContacts(ctx, s.vaultID, contacts)
+	return s.certRepo.SetContacts(ctx, s.vid(ctx), contacts)
 }
 
 func (s *CertService) DeleteContacts(ctx context.Context) error {
-	return s.certRepo.DeleteContacts(ctx, s.vaultID)
+	return s.certRepo.DeleteContacts(ctx, s.vid(ctx))
 }
 
 // ─── Issuers ──────────────────────────────────────────────────────────────────
 
 func (s *CertService) GetIssuer(ctx context.Context, name string) (*sqlite.IssuerData, error) {
-	return s.certRepo.GetIssuer(ctx, s.vaultID, name)
+	return s.certRepo.GetIssuer(ctx, s.vid(ctx), name)
 }
 
 func (s *CertService) SetIssuer(ctx context.Context, name string, provider string, credentials, orgDetails, attrs map[string]any) (*sqlite.IssuerData, error) {
@@ -190,25 +199,25 @@ func (s *CertService) SetIssuer(ctx context.Context, name string, provider strin
 		OrgDetails:  orgDetails,
 		Attributes:  attrs,
 	}
-	if err := s.certRepo.SetIssuer(ctx, s.vaultID, iss); err != nil {
+	if err := s.certRepo.SetIssuer(ctx, s.vid(ctx), iss); err != nil {
 		return nil, err
 	}
 	return iss, nil
 }
 
 func (s *CertService) DeleteIssuer(ctx context.Context, name string) (*sqlite.IssuerData, error) {
-	iss, err := s.certRepo.GetIssuer(ctx, s.vaultID, name)
+	iss, err := s.certRepo.GetIssuer(ctx, s.vid(ctx), name)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.certRepo.DeleteIssuer(ctx, s.vaultID, name); err != nil {
+	if err := s.certRepo.DeleteIssuer(ctx, s.vid(ctx), name); err != nil {
 		return nil, err
 	}
 	return iss, nil
 }
 
 func (s *CertService) ListIssuers(ctx context.Context) ([]*sqlite.IssuerData, error) {
-	return s.certRepo.ListIssuers(ctx, s.vaultID)
+	return s.certRepo.ListIssuers(ctx, s.vid(ctx))
 }
 
 // ─── geração X.509 ────────────────────────────────────────────────────────────

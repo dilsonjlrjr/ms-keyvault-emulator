@@ -6,6 +6,7 @@ import (
 
 	"github.com/dilsonrabelo/kvemu/internal/domain"
 	"github.com/dilsonrabelo/kvemu/internal/ports"
+	"github.com/dilsonrabelo/kvemu/internal/vaultctx"
 )
 
 const defaultRetentionDays = 90
@@ -19,11 +20,21 @@ func NewSecretService(repo ports.SecretRepository, vaultID string) *SecretServic
 	return &SecretService{repo: repo, vaultID: vaultID}
 }
 
+// vid resolve o vault da request (injetado pelo VaultResolver via context),
+// caindo no vault default do boot quando o context não traz vault (ex.: chamadas
+// internas como import/export que constroem o service com vaultID explícito).
+func (s *SecretService) vid(ctx context.Context) string {
+	if v := vaultctx.NameFrom(ctx); v != "" {
+		return v
+	}
+	return s.vaultID
+}
+
 // Set cria ou atualiza um secret (nova versão sempre).
 func (s *SecretService) Set(ctx context.Context, name, value, contentType string,
 	tags map[string]string, attrs domain.Attributes) (*domain.SecretVersion, error) {
 
-	deleted, err := s.repo.IsDeleted(ctx, s.vaultID, name)
+	deleted, err := s.repo.IsDeleted(ctx, s.vid(ctx), name)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +49,7 @@ func (s *SecretService) Set(ctx context.Context, name, value, contentType string
 		Tags:        tags,
 		Attributes:  attrs,
 	}
-	if err := s.repo.Upsert(ctx, s.vaultID, sv); err != nil {
+	if err := s.repo.Upsert(ctx, s.vid(ctx), sv); err != nil {
 		return nil, err
 	}
 	return sv, nil
@@ -47,14 +58,14 @@ func (s *SecretService) Set(ctx context.Context, name, value, contentType string
 // Get retorna a versão corrente (version="") ou uma versão específica.
 func (s *SecretService) Get(ctx context.Context, name, version string) (*domain.SecretVersion, error) {
 	if version == "" {
-		return s.repo.GetCurrent(ctx, s.vaultID, name)
+		return s.repo.GetCurrent(ctx, s.vid(ctx), name)
 	}
-	return s.repo.Get(ctx, s.vaultID, name, version)
+	return s.repo.Get(ctx, s.vid(ctx), name, version)
 }
 
 // List lista secrets (sem value — só metadados).
 func (s *SecretService) List(ctx context.Context, max int, skipToken string) ([]*domain.SecretVersion, string, error) {
-	list, next, err := s.repo.List(ctx, s.vaultID, max, skipToken)
+	list, next, err := s.repo.List(ctx, s.vid(ctx), max, skipToken)
 	if err != nil {
 		return nil, "", err
 	}
@@ -67,7 +78,7 @@ func (s *SecretService) List(ctx context.Context, max int, skipToken string) ([]
 
 // ListVersions lista versões de um secret (sem value).
 func (s *SecretService) ListVersions(ctx context.Context, name string, max int, skipToken string) ([]*domain.SecretVersion, string, error) {
-	list, next, err := s.repo.ListVersions(ctx, s.vaultID, name, max, skipToken)
+	list, next, err := s.repo.ListVersions(ctx, s.vid(ctx), name, max, skipToken)
 	if err != nil {
 		return nil, "", err
 	}
@@ -81,34 +92,34 @@ func (s *SecretService) ListVersions(ctx context.Context, name string, max int, 
 func (s *SecretService) Update(ctx context.Context, name, version string,
 	attrs domain.Attributes, contentType *string, tags map[string]string) (*domain.SecretVersion, error) {
 
-	if err := s.repo.UpdateAttributes(ctx, s.vaultID, name, version, attrs, contentType, tags); err != nil {
+	if err := s.repo.UpdateAttributes(ctx, s.vid(ctx), name, version, attrs, contentType, tags); err != nil {
 		return nil, err
 	}
-	return s.repo.Get(ctx, s.vaultID, name, version)
+	return s.repo.Get(ctx, s.vid(ctx), name, version)
 }
 
 // Delete faz soft-delete.
 func (s *SecretService) Delete(ctx context.Context, name string) (*domain.DeletedSecret, error) {
 	schedPurge := time.Now().AddDate(0, 0, defaultRetentionDays).Unix()
-	return s.repo.SoftDelete(ctx, s.vaultID, name, schedPurge)
+	return s.repo.SoftDelete(ctx, s.vid(ctx), name, schedPurge)
 }
 
 // GetDeleted retorna um secret deletado.
 func (s *SecretService) GetDeleted(ctx context.Context, name string) (*domain.DeletedSecret, error) {
-	return s.repo.GetDeleted(ctx, s.vaultID, name)
+	return s.repo.GetDeleted(ctx, s.vid(ctx), name)
 }
 
 // ListDeleted lista secrets deletados.
 func (s *SecretService) ListDeleted(ctx context.Context, max int, skipToken string) ([]*domain.DeletedSecret, string, error) {
-	return s.repo.ListDeleted(ctx, s.vaultID, max, skipToken)
+	return s.repo.ListDeleted(ctx, s.vid(ctx), max, skipToken)
 }
 
 // Recover recupera um secret deletado.
 func (s *SecretService) Recover(ctx context.Context, name string) (*domain.SecretVersion, error) {
-	return s.repo.Recover(ctx, s.vaultID, name)
+	return s.repo.Recover(ctx, s.vid(ctx), name)
 }
 
 // Purge remove permanentemente um secret deletado.
 func (s *SecretService) Purge(ctx context.Context, name string) error {
-	return s.repo.Purge(ctx, s.vaultID, name)
+	return s.repo.Purge(ctx, s.vid(ctx), name)
 }

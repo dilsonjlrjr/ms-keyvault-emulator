@@ -6,14 +6,11 @@ import (
 
 	"github.com/dilsonrabelo/kvemu/internal/domain"
 	"github.com/dilsonrabelo/kvemu/internal/ports"
+	"github.com/dilsonrabelo/kvemu/internal/vaultctx"
 )
 
-const ctxKeyVault ctxKey = 1
-var CtxKeyVault = ctxKeyVault
-
 func VaultFromContext(ctx context.Context) *domain.Vault {
-	v, _ := ctx.Value(ctxKeyVault).(*domain.Vault)
-	return v
+	return vaultctx.From(ctx)
 }
 
 func VaultResolver(vaultRepo ports.VaultRepository, baseDomain, defaultVault string) func(http.Handler) http.Handler {
@@ -47,7 +44,7 @@ func VaultResolver(vaultRepo ports.VaultRepository, baseDomain, defaultVault str
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), ctxKeyVault, vault)
+			ctx := vaultctx.With(r.Context(), vault)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
