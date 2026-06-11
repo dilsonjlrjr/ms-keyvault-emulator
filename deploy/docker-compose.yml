@@ -1,6 +1,14 @@
 name: kvemu
 
 services:
+  kvemu-init:
+    image: alpine:latest
+    command: sh -c "chown -R 65532:65532 /data /certs"
+    volumes:
+      - kvemu-data:/data
+      - kvemu-certs:/certs
+    restart: "no"
+
   kvemu:
     build:
       context: ..
@@ -28,6 +36,9 @@ services:
     volumes:
       - kvemu-data:/data
       - kvemu-certs:/certs
+    depends_on:
+      kvemu-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "/kvemu", "healthcheck", "--addr", "https://localhost:13000"]
       interval: 30s
