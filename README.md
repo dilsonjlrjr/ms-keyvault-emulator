@@ -23,6 +23,18 @@ docker compose -f deploy/docker-compose.yml up --build
 
 Emulator starts on `https://localhost:13000` with auto-generated TLS and a fake AAD identity provider.
 
+#### Load pre-built image (air-gapped / offline)
+
+```bash
+# Export on build machine:
+make dist                        # builds binary + image → dist/image-docker/kvemu-*.tar.gz
+scp dist/image-docker/kvemu-*.tar.gz target-host:
+
+# Load on target machine:
+docker load -i kvemu-*.tar.gz    # imports ghcr.io/dilsonrabelo/kvemu
+docker compose -f deploy/docker-compose.yml up
+```
+
 ---
 
 ### CLI Commands
@@ -727,6 +739,18 @@ docker compose -f deploy/docker-compose.yml up --build
 ```
 
 O emulador sobe em `https://localhost:13000` com TLS auto-gerado e um provedor de identidade AAD fake.
+
+#### Carregar imagem pré-buildada (offline / air-gapped)
+
+```bash
+# Exportar na máquina de build:
+make dist                        # compila binário + imagem → dist/image-docker/kvemu-*.tar.gz
+scp dist/image-docker/kvemu-*.tar.gz maquina-alvo:
+
+# Carregar na máquina alvo:
+docker load -i kvemu-*.tar.gz    # importa ghcr.io/dilsonrabelo/kvemu
+docker compose -f deploy/docker-compose.yml up
+```
 
 ---
 
