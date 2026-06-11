@@ -46,6 +46,52 @@ docker compose -f deploy/docker-compose.yml up
 | 2.7.18 | 4.5.0 | ✅ |
 | 3.4.5 | 5.21.0 | ✅ |
 
+### Local Machine Setup (for client applications)
+
+#### 1. Download CA Certificate
+
+```bash
+# From the container:
+docker cp kvemu:/certs/ca.pem ./ca.pem
+
+# Or from the web panel at http://<host>:3000/ca
+
+# Linux / macOS — import into system trust store:
+sudo cp ca.pem /usr/local/share/ca-certificates/kvemu.crt && sudo update-ca-certificates   # Debian/Ubuntu
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ca.pem  # macOS
+```
+
+#### 2. Configure /etc/hosts
+
+Add these entries so your application resolves AAD endpoints and vault hostnames to the emulator:
+
+```
+# /etc/hosts — Key Vault Emulator
+192.168.100.112 login.microsoftonline.com
+192.168.100.112 lab-dilson
+192.168.100.112 vault.kvemu.local
+```
+
+Replace `192.168.100.112` with the actual IP of the machine running kvemu.
+
+#### 3. Custom Hosts File for Java (alternative to /etc/hosts)
+
+If you cannot edit `/etc/hosts` (e.g., CI, managed environments), use a custom hosts file with the JVM:
+
+```bash
+# Create custom-hosts file:
+cat > custom-hosts << 'EOF'
+192.168.100.112 login.microsoftonline.com
+192.168.100.112 lab-dilson
+192.168.100.112 vault.kvemu.local
+EOF
+
+# Set JVM property:
+JAVA_TOOL_OPTIONS=-Djdk.net.hosts.file=/path/to/custom-hosts
+```
+
+This works from Java 8+ and overrides `/etc/hosts` for DNS resolution within the JVM only.
+
 ### Documentation
 
 | Document | Description |
@@ -100,6 +146,52 @@ docker compose -f deploy/docker-compose.yml up
 | 2.7.9 | 4.5.0 | ✅ |
 | 2.7.18 | 4.5.0 | ✅ |
 | 3.4.5 | 5.21.0 | ✅ |
+
+### Configuração da Máquina Local (para aplicações cliente)
+
+#### 1. Baixar Certificado CA
+
+```bash
+# Do container:
+docker cp kvemu:/certs/ca.pem ./ca.pem
+
+# Ou pelo painel web em http://<host>:3000/ca
+
+# Linux / macOS — importar no trust store do sistema:
+sudo cp ca.pem /usr/local/share/ca-certificates/kvemu.crt && sudo update-ca-certificates   # Debian/Ubuntu
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ca.pem  # macOS
+```
+
+#### 2. Configurar /etc/hosts
+
+Adicione estas entradas para que sua aplicação resolva os endpoints AAD e hostnames do vault para o emulador:
+
+```
+# /etc/hosts — Key Vault Emulator
+192.168.100.112 login.microsoftonline.com
+192.168.100.112 lab-dilson
+192.168.100.112 vault.kvemu.local
+```
+
+Substitua `192.168.100.112` pelo IP real da máquina onde o kvemu está rodando.
+
+#### 3. Arquivo de Hosts Customizado para Java (alternativa ao /etc/hosts)
+
+Se você não pode editar o `/etc/hosts` (ex: CI, ambientes gerenciados), use um arquivo de hosts customizado com a JVM:
+
+```bash
+# Criar arquivo custom-hosts:
+cat > custom-hosts << 'EOF'
+192.168.100.112 login.microsoftonline.com
+192.168.100.112 lab-dilson
+192.168.100.112 vault.kvemu.local
+EOF
+
+# Configurar propriedade da JVM:
+JAVA_TOOL_OPTIONS=-Djdk.net.hosts.file=/caminho/para/custom-hosts
+```
+
+Isso funciona a partir do Java 8+ e sobrescreve o `/etc/hosts` para resolução DNS apenas dentro da JVM.
 
 ### Documentação
 
