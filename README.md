@@ -11,6 +11,8 @@
 
 kvemu is a **zero-dependency Azure Key Vault emulator** that implements the data-plane API 7.4. Applications using the official Azure SDKs (Java, .NET, Python, Go, etc.) work without code changes — only endpoint + credentials configuration.
 
+**Multi-vault:** a single instance hosts multiple vaults. Real SDKs route by hostname (`<vault>.<base-domain>:13000`, Azure-spec); the bundled web UI uses a dedicated `/ui` management plane with the vault in the path (no AAD, no DNS dependency). Data is isolated per vault.
+
 **Stack:** Go 1.24 · chi router · SQLite (pure-Go, no CGO) · golang-jwt/v5 · AES-256-GCM at-rest · Docker distroless (~8 MB image)
 
 ### Quick Start (Docker)
@@ -117,6 +119,8 @@ This works from Java 8+ and overrides `/etc/hosts` for DNS resolution within the
 ### Sobre
 
 kvemu é um **emulador do Azure Key Vault sem dependências externas** que implementa a API data-plane 7.4. Aplicações que usam os SDKs oficiais do Azure (Java, .NET, Python, Go, etc.) funcionam sem alteração de código — apenas configuração de endpoint + credenciais.
+
+**Multi-vault:** uma única instância hospeda vários vaults. Os SDKs reais roteiam por hostname (`<vault>.<base-domain>:13000`, spec Azure); o painel web usa um plano `/ui` dedicado com o vault no path (sem AAD, sem dependência de DNS). Os dados são isolados por vault.
 
 **Stack:** Go 1.24 · chi router · SQLite (pure-Go, sem CGO) · golang-jwt/v5 · AES-256-GCM at-rest · Docker distroless (~8 MB imagem)
 

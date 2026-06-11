@@ -53,6 +53,26 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		})
 	}
 
+	// UI plane — consumido pela kv-interface. Vault explícito no path, sem AAD
+	// (igual ao management plane). NÃO faz parte da spec Azure data-plane: existe
+	// só para a UI selecionar o vault de forma determinística, sem Host/DNS.
+	r.Route("/ui/vaults/{vault}", func(r chi.Router) {
+		r.Use(middleware.VaultFromPath(cfg.VaultRepo, "vault"))
+
+		if cfg.Secrets != nil {
+			r.Get("/secrets", cfg.Secrets.List)
+			r.Get("/secrets/{name}", cfg.Secrets.Get)
+			r.Put("/secrets/{name}", cfg.Secrets.Set)
+			r.Delete("/secrets/{name}", cfg.Secrets.Delete)
+		}
+		if cfg.Keys != nil {
+			r.Get("/keys", cfg.Keys.List)
+		}
+		if cfg.Certs != nil {
+			r.Get("/certificates", cfg.Certs.List)
+		}
+	})
+
 	// All other routes — vault resolution
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.VaultResolver(cfg.VaultRepo, cfg.BaseDomain, cfg.DefaultVault))

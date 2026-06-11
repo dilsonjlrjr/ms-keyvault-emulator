@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/dilsonrabelo/kvemu/internal/adapters/http/middleware"
 	"github.com/dilsonrabelo/kvemu/internal/domain"
 	"github.com/dilsonrabelo/kvemu/internal/ports"
@@ -133,6 +135,56 @@ func TestVaultResolver_UnknownVault_404(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+// Plano /ui: o vault vem do path, não do Host. Vaults distintos devem resolver
+// isolados — é o que garante que a UI veja os secrets do vault selecionado.
+func TestVaultFromPath_ResolvesByPath(t *testing.T) {
+	repo := newSharedMockVaultRepo()
+	repo.Create(context.Background(), &domain.Vault{Name: "comum", Host: "comum.kvemu.local:13000"})
+	repo.Create(context.Background(), &domain.Vault{Name: "configs", Host: "configs.kvemu.local:13000"})
+
+	echo := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(middleware.VaultFromContext(r.Context()).Name))
+	})
+
+	r := chi.NewRouter()
+	r.Route("/ui/vaults/{vault}", func(r chi.Router) {
+		r.Use(middleware.VaultFromPath(repo, "vault"))
+		r.Get("/secrets", echo)
+	})
+
+	for _, want := range []string{"comum", "configs"} {
+		req := httptest.NewRequest("GET", "/ui/vaults/"+want+"/secrets", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("vault %q: status = %d, want 200", want, rec.Code)
+		}
+		if rec.Body.String() != want {
+			t.Errorf("vault do path ignorado: got %q, want %q", rec.Body.String(), want)
+		}
+	}
+}
+
+func TestVaultFromPath_UnknownVault_404(t *testing.T) {
+	repo := newSharedMockVaultRepo()
+	repo.Create(context.Background(), &domain.Vault{Name: "comum", Host: "comum.kvemu.local:13000"})
+
+	r := chi.NewRouter()
+	r.Route("/ui/vaults/{vault}", func(r chi.Router) {
+		r.Use(middleware.VaultFromPath(repo, "vault"))
+		r.Get("/secrets", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+	})
+
+	req := httptest.NewRequest("GET", "/ui/vaults/missing/secrets", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
