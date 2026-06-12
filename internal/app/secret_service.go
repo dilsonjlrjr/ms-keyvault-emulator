@@ -31,8 +31,15 @@ func (s *SecretService) vid(ctx context.Context) string {
 }
 
 // Set cria ou atualiza um secret (nova versão sempre).
+// Se existir um secret com o mesmo nome soft-deleted, faz purge automático antes.
 func (s *SecretService) Set(ctx context.Context, name, value, contentType string,
 	tags map[string]string, attrs domain.Attributes) (*domain.SecretVersion, error) {
+
+	if deleted, err := s.repo.IsDeleted(ctx, s.vid(ctx), name); err == nil && deleted {
+		if err := s.repo.Purge(ctx, s.vid(ctx), name); err != nil {
+			return nil, err
+		}
+	}
 
 	sv := &domain.SecretVersion{
 		Name:        name,
