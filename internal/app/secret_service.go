@@ -34,14 +34,6 @@ func (s *SecretService) vid(ctx context.Context) string {
 func (s *SecretService) Set(ctx context.Context, name, value, contentType string,
 	tags map[string]string, attrs domain.Attributes) (*domain.SecretVersion, error) {
 
-	deleted, err := s.repo.IsDeleted(ctx, s.vid(ctx), name)
-	if err != nil {
-		return nil, err
-	}
-	if deleted {
-		return nil, domain.ErrDeleted{Kind: "Secret", Name: name}
-	}
-
 	sv := &domain.SecretVersion{
 		Name:        name,
 		Value:       value,
