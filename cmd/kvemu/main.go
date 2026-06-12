@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	kvCrypto "github.com/dilsonrabelo/kvemu/internal/adapters/crypto"
@@ -62,12 +63,17 @@ func main() {
 // ─── stack compartilhado ───────────────────────────────────────────────────────
 
 type stack struct {
-	db        *sql.DB
-	secretSvc *app.SecretService
-	keySvc    *app.KeyService
-	certSvc   *app.CertService
-	auditRepo *sqlite.AuditRepo
-	cfg       config.Config
+	db         *sql.DB
+	secretSvc  *app.SecretService
+	keySvc     *app.KeyService
+	certSvc    *app.CertService
+	auditRepo  *sqlite.AuditRepo
+	vaultRepo  *sqlite.VaultRepo
+	vaultSvc   *app.VaultService
+	secretRepo *sqlite.SecretRepo
+	keyRepo    *sqlite.KeyRepo
+	certRepo   *sqlite.CertRepo
+	cfg        config.Config
 }
 
 func buildStack() *stack {
@@ -76,26 +82,36 @@ func buildStack() *stack {
 	db, err := sqlite.Open(cfg.DataPath)
 	mustOK(err, "sqlite open")
 	mustOK(migrate(db, migrationsFS), "migrate")
-	mustOK(ensureVault(db, cfg.VaultHost, cfg.TenantID), "ensure vault")
+
+	vaultRepo := sqlite.NewVaultRepo(db)
+	vaultSvc := app.NewVaultService(vaultRepo, cfg.BaseDomain, portFromAddr(cfg.Addr))
+	mustOK(ensureDefaultVault(vaultSvc, cfg.DefaultVault, cfg.TenantID), "ensure default vault")
+
+	vaultName := cfg.DefaultVault
 
 	secretRepo := sqlite.NewSecretRepo(db, cfg.MasterKey)
-	secretSvc := app.NewSecretService(secretRepo, cfg.VaultHost)
+	secretSvc := app.NewSecretService(secretRepo, vaultName)
 
 	keyRepo := sqlite.NewKeyRepo(db, cfg.MasterKey)
-	keySvc := app.NewKeyService(keyRepo, cfg.VaultHost)
+	keySvc := app.NewKeyService(keyRepo, vaultName)
 
 	certRepo := sqlite.NewCertRepo(db)
-	certSvc := app.NewCertService(certRepo, secretSvc, keySvc, cfg.VaultHost)
+	certSvc := app.NewCertService(certRepo, secretSvc, keySvc, vaultName)
 
 	auditRepo := sqlite.NewAuditRepo(db)
 
 	return &stack{
-		db:        db,
-		secretSvc: secretSvc,
-		keySvc:    keySvc,
-		certSvc:   certSvc,
-		auditRepo: auditRepo,
-		cfg:       cfg,
+		db:         db,
+		secretSvc:  secretSvc,
+		keySvc:     keySvc,
+		certSvc:    certSvc,
+		auditRepo:  auditRepo,
+		vaultRepo:  vaultRepo,
+		vaultSvc:   vaultSvc,
+		secretRepo: secretRepo,
+		keyRepo:    keyRepo,
+		certRepo:   certRepo,
+		cfg:        cfg,
 	}
 }
 
@@ -123,14 +139,16 @@ func runServer() {
 	}
 
 	router := kvHTTP.NewRouter(kvHTTP.RouterConfig{
-		VaultHost:  cfg.VaultHost,
-		TenantID:   cfg.TenantID,
-		AADKey:     aadKey,
-		AuthStrict: cfg.AuthStrict,
-		AuditFn:    auditFn,
-		Secrets:    kvHTTP.NewSecretHandlers(s.secretSvc, cfg.VaultHost),
-		Keys:       kvHTTP.NewKeyHandlers(s.keySvc, cfg.VaultHost),
-		Certs:      kvHTTP.NewCertHandlers(s.certSvc, cfg.VaultHost),
+		AADKey:       aadKey,
+		AuthStrict:   cfg.AuthStrict,
+		AuditFn:      auditFn,
+		VaultRepo:    s.vaultRepo,
+		BaseDomain:   cfg.BaseDomain,
+		DefaultVault: cfg.DefaultVault,
+		Secrets:      kvHTTP.NewSecretHandlers(s.secretSvc, vaultHostFromCtx(s.cfg)),
+		Keys:         kvHTTP.NewKeyHandlers(s.keySvc, vaultHostFromCtx(s.cfg)),
+		Certs:        kvHTTP.NewCertHandlers(s.certSvc, vaultHostFromCtx(s.cfg)),
+		Vaults:       kvHTTP.NewVaultHandlers(s.vaultSvc, s.secretRepo, s.keyRepo, s.certRepo),
 	})
 
 	srv := &http.Server{
@@ -239,7 +257,7 @@ func loadTLS(cfg config.Config) *kvCrypto.TLSBundle {
 		return bundle
 	}
 	if cfg.TLSAuto {
-		bundle, err = kvCrypto.GenerateOrLoad(cfg.CertDir, cfg.VaultHost, cfg.TLSSANs)
+		bundle, err = kvCrypto.GenerateOrLoad(cfg.CertDir, cfg.VaultHost, cfg.TLSSANs, cfg.BaseDomain)
 		mustOK(err, "tls generate/load")
 		if cfg.CAOut != "" {
 			dir := filepath.Dir(cfg.CAOut)
@@ -256,6 +274,10 @@ func loadTLS(cfg config.Config) *kvCrypto.TLSBundle {
 }
 
 func migrate(db *sql.DB, fsys embed.FS) error {
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS _migrations (filename TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)`); err != nil {
+		return fmt.Errorf("create _migrations: %w", err)
+	}
+
 	entries, err := fs.ReadDir(fsys, "migrations")
 	if err != nil {
 		return fmt.Errorf("migrations dir: %w", err)
@@ -264,6 +286,16 @@ func migrate(db *sql.DB, fsys embed.FS) error {
 		if e.IsDir() {
 			continue
 		}
+
+		var already int
+		if err := db.QueryRow("SELECT COUNT(*) FROM _migrations WHERE filename = ?", e.Name()).Scan(&already); err != nil {
+			return fmt.Errorf("check migration %s: %w", e.Name(), err)
+		}
+		if already > 0 {
+			slog.Debug("migration already applied, skipping", "file", e.Name())
+			continue
+		}
+
 		data, err := fsys.ReadFile("migrations/" + e.Name())
 		if err != nil {
 			return fmt.Errorf("read %s: %w", e.Name(), err)
@@ -271,7 +303,10 @@ func migrate(db *sql.DB, fsys embed.FS) error {
 		if _, err := db.Exec(string(data)); err != nil {
 			return fmt.Errorf("exec %s: %w", e.Name(), err)
 		}
-		slog.Debug("migration applied", "file", e.Name())
+		if _, err := db.Exec("INSERT INTO _migrations (filename, applied_at) VALUES (?, ?)", e.Name(), time.Now().Unix()); err != nil {
+			return fmt.Errorf("record migration %s: %w", e.Name(), err)
+		}
+		slog.Info("migration applied", "file", e.Name())
 	}
 	return nil
 }
@@ -287,16 +322,24 @@ func runHealthcheck(addr string) {
 	fmt.Println("ok")
 }
 
-func ensureVault(db *sql.DB, vaultHost, tenantID string) error {
-	_, err := db.Exec(`
-		INSERT OR IGNORE INTO vault(id, dns_name, tenant_id, created)
-		VALUES (?, ?, ?, ?)`,
-		vaultHost,
-		"https://"+vaultHost,
-		tenantID,
-		time.Now().Unix(),
-	)
+func ensureDefaultVault(svc *app.VaultService, name, tenantID string) error {
+	_, err := svc.GetByName(context.Background(), name)
+	if err == nil {
+		return nil
+	}
+	_, err = svc.Create(context.Background(), name, "Default Vault", tenantID)
 	return err
+}
+
+func vaultHostFromCtx(cfg config.Config) string {
+	return domain.BuildVaultHost(cfg.DefaultVault, cfg.BaseDomain, portFromAddr(cfg.Addr))
+}
+
+func portFromAddr(addr string) string {
+	if _, port, ok := strings.Cut(addr, ":"); ok {
+		return port
+	}
+	return "13000"
 }
 
 func mustOK(err error, msg string) {

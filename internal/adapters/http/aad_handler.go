@@ -11,30 +11,35 @@ import (
 )
 
 type aadHandler struct {
-	key      *kvCrypto.AADKey
-	vaultHost string
+	key *kvCrypto.AADKey
 }
 
-func newAADHandler(key *kvCrypto.AADKey, vaultHost string) *aadHandler {
-	return &aadHandler{key: key, vaultHost: vaultHost}
+func newAADHandler(key *kvCrypto.AADKey) *aadHandler {
+	return &aadHandler{key: key}
 }
 
-func (h *aadHandler) issuer(tenantID string) string {
-	return fmt.Sprintf("https://%s/%s/v2.0", h.vaultHost, tenantID)
+func (h *aadHandler) vaultHost(r *http.Request) string {
+	return vaultHostFromContext(r, "localhost:13000")
+}
+
+func (h *aadHandler) issuer(vaultHost, tenantID string) string {
+	return fmt.Sprintf("https://%s/%s/v2.0", vaultHost, tenantID)
 }
 
 // OIDC discovery v2 — GET /{tenant}/v2.0/.well-known/openid-configuration
 func (h *aadHandler) oidcV2(w http.ResponseWriter, r *http.Request) {
 	tenant := chi.URLParam(r, "tenant")
+	host := h.vaultHost(r)
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(kvCrypto.OIDCConfig(h.vaultHost, tenant))
+	w.Write(kvCrypto.OIDCConfig(host, tenant))
 }
 
 // OIDC discovery v1 — GET /{tenant}/.well-known/openid-configuration
 func (h *aadHandler) oidcV1(w http.ResponseWriter, r *http.Request) {
 	tenant := chi.URLParam(r, "tenant")
+	host := h.vaultHost(r)
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(kvCrypto.OIDCConfig(h.vaultHost, tenant))
+	w.Write(kvCrypto.OIDCConfig(host, tenant))
 }
 
 // JWKS — GET /{tenant}/discovery/v2.0/keys
@@ -64,7 +69,7 @@ func (h *aadHandler) tokenV1(w http.ResponseWriter, r *http.Request) {
 // MSAL4J usa esse endpoint para validar a autoridade antes de obter token.
 func (h *aadHandler) instanceDiscovery(w http.ResponseWriter, r *http.Request) {
 	tenant := chi.URLParam(r, "tenant")
-	host := h.vaultHost
+	host := h.vaultHost(r)
 
 	resp := map[string]any{
 		"tenant_discovery_endpoint": fmt.Sprintf("https://%s/%s/v2.0/.well-known/openid-configuration", host, tenant),
@@ -98,8 +103,9 @@ func (h *aadHandler) handleToken(w http.ResponseWriter, r *http.Request, tenantI
 		clientID = "unknown"
 	}
 
-	issuer := h.issuer(tenantID)
-	audience := fmt.Sprintf("https://%s", h.vaultHost)
+	host := h.vaultHost(r)
+	issuer := h.issuer(host, tenantID)
+	audience := fmt.Sprintf("https://%s", host)
 	token, exp, err := h.key.IssueToken(issuer, clientID, tenantID, audience)
 	if err != nil {
 		http.Error(w, "token error", http.StatusInternalServerError)

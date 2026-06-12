@@ -9,12 +9,24 @@ import (
 	"testing"
 
 	"github.com/dilsonrabelo/kvemu/internal/adapters/http/middleware"
+	"github.com/dilsonrabelo/kvemu/internal/domain"
+	"github.com/dilsonrabelo/kvemu/internal/vaultctx"
 )
 
 const (
 	testVaultHost = "lab-dilson:13000"
 	testTenantID  = "a0c2a3f5-e1b3-4d6a-9c41-2cdd1f2c7e0f"
 )
+
+func withVault(r *http.Request) *http.Request {
+	v := &domain.Vault{
+		Name:     "lab-dilson",
+		Host:     testVaultHost,
+		TenantID: testTenantID,
+	}
+	ctx := vaultctx.With(r.Context(), v)
+	return r.WithContext(ctx)
+}
 
 // legacySdkParse replica o parser FRÁGIL do azure-security-keyvault-secrets <=4.6
 // (Boot 2.7). Qualquer token sem '=' causa ArrayIndexOutOfBoundsException no Java.
@@ -48,12 +60,12 @@ func TestBuildChallenge_GoldenString(t *testing.T) {
 // TestChallengeMiddleware_EmitsExactlyOneHeader garante que o middleware emite
 // UM único header WWW-Authenticate (nunca duplicado via Add).
 func TestChallengeMiddleware_EmitsExactlyOneHeader(t *testing.T) {
-	mw := middleware.Challenge(testVaultHost, testTenantID)
+	mw := middleware.Challenge()
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/secrets/x", nil)
+	req := withVault(httptest.NewRequest(http.MethodGet, "/secrets/x", nil))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -73,12 +85,12 @@ func TestChallengeMiddleware_EmitsExactlyOneHeader(t *testing.T) {
 // Simula o que o Java faz: concatena múltiplos headers com vírgula, depois
 // passa pelo parser split(" ") -> split("="). Não pode estourar.
 func TestChallengeMiddleware_SurviveLegacySdkParser(t *testing.T) {
-	mw := middleware.Challenge(testVaultHost, testTenantID)
+	mw := middleware.Challenge()
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/secrets/x", nil)
+	req := withVault(httptest.NewRequest(http.MethodGet, "/secrets/x", nil))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -127,12 +139,12 @@ func TestChallengeMiddleware_AuthorizationIsCleanURI(t *testing.T) {
 
 // TestChallengeMiddleware_PassesWithToken — com Bearer, 401 não deve ser emitido.
 func TestChallengeMiddleware_PassesWithToken(t *testing.T) {
-	mw := middleware.Challenge(testVaultHost, testTenantID)
+	mw := middleware.Challenge()
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/secrets/x", nil)
+	req := withVault(httptest.NewRequest(http.MethodGet, "/secrets/x", nil))
 	req.Header.Set("Authorization", "Bearer fake.token.here")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

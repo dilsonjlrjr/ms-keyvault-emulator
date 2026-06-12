@@ -23,7 +23,7 @@ type TLSBundle struct {
 }
 
 // GenerateOrLoad gera CA+leaf se não existirem; senão carrega do disco.
-func GenerateOrLoad(certDir, vaultHost, extraSANs string) (*TLSBundle, error) {
+func GenerateOrLoad(certDir, vaultHost, extraSANs, baseDomain string) (*TLSBundle, error) {
 	caPath := filepath.Join(certDir, "ca.pem")
 	caKeyPath := filepath.Join(certDir, "ca-key.pem")
 	leafPath := filepath.Join(certDir, "leaf.pem")
@@ -36,7 +36,7 @@ func GenerateOrLoad(certDir, vaultHost, extraSANs string) (*TLSBundle, error) {
 	if err := os.MkdirAll(certDir, 0700); err != nil {
 		return nil, err
 	}
-	return generate(caPath, caKeyPath, leafPath, leafKeyPath, vaultHost, extraSANs)
+	return generate(caPath, caKeyPath, leafPath, leafKeyPath, vaultHost, extraSANs, baseDomain)
 }
 
 // LoadBYO carrega cert+key PEM fornecidos externamente.
@@ -56,7 +56,7 @@ func LoadBYO(certPEM, keyPEM, caPEM string) (*TLSBundle, error) {
 	return b, nil
 }
 
-func generate(caPath, caKeyPath, leafPath, leafKeyPath, vaultHost, extraSANs string) (*TLSBundle, error) {
+func generate(caPath, caKeyPath, leafPath, leafKeyPath, vaultHost, extraSANs, baseDomain string) (*TLSBundle, error) {
 	caKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
 		return nil, err
@@ -85,7 +85,7 @@ func generate(caPath, caKeyPath, leafPath, leafKeyPath, vaultHost, extraSANs str
 		return nil, err
 	}
 
-	dns, ips := buildSANs(vaultHost, extraSANs)
+	dns, ips := buildSANs(vaultHost, extraSANs, baseDomain)
 
 	leafSerial, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	leafTmpl := &x509.Certificate{
@@ -146,7 +146,7 @@ func loadBundle(caPath, leafPath, leafKeyPath string) (*TLSBundle, error) {
 	return &TLSBundle{Cert: tlsCert, CACert: caCert, CAPEM: caPEM, LeafPEM: leafPEM}, nil
 }
 
-func buildSANs(vaultHost, extras string) ([]string, []net.IP) {
+func buildSANs(vaultHost, extras, baseDomain string) ([]string, []net.IP) {
 	seen := map[string]bool{}
 	dns := []string{}
 	ips := []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")}
@@ -157,7 +157,6 @@ func buildSANs(vaultHost, extras string) ([]string, []net.IP) {
 			return
 		}
 		seen[s] = true
-		// strip porta
 		host := s
 		if h, _, err := net.SplitHostPort(s); err == nil {
 			host = h
@@ -174,6 +173,9 @@ func buildSANs(vaultHost, extras string) ([]string, []net.IP) {
 	add("kvemu")
 	for _, e := range strings.Split(extras, ",") {
 		add(e)
+	}
+	if baseDomain != "" {
+		add("*." + baseDomain)
 	}
 	return dns, ips
 }

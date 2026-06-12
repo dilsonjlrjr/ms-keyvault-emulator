@@ -4,7 +4,7 @@ VERSION  := $(shell git describe --tags --always 2>/dev/null || echo dev)
 LDFLAGS  := -ldflags="-s -w -X main.version=$(VERSION)"
 IMAGE    := ghcr.io/dilsonrabelo/kvemu
 
-.PHONY: all build test verify gate run clean \
+.PHONY: all build test verify gate run clean dist \
         docker/build docker/run docker/push docker/buildx docker/seed \
         compat/spring27 compat/spring279 compat/spring3
 
@@ -31,7 +31,20 @@ run:
 
 ## clean: remove binários e dados gerados
 clean:
-	rm -rf bin/ data/ certs/
+	rm -rf bin/ data/ certs/ dist/
+
+## dist: compila para linux, builda imagem Docker e exporta compactada
+dist:
+	CGO_ENABLED=0 GOOS=linux go build $(LDFLAGS) -trimpath -o $(BIN) $(MAIN)
+	docker build \
+		-f deploy/Dockerfile \
+		--build-arg VERSION=$(VERSION) \
+		-t $(IMAGE):$(VERSION) \
+		.
+	mkdir -p dist/image-docker
+	docker save $(IMAGE):$(VERSION) | gzip > dist/image-docker/kvemu-$(VERSION).tar.gz
+	@echo "Image exported: dist/image-docker/kvemu-$(VERSION).tar.gz"
+	@echo "Load with:   docker load -i dist/image-docker/kvemu-$(VERSION).tar.gz"
 
 ## lint: verifica estilo e erros estáticos
 lint:
