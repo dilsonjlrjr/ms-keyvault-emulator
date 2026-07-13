@@ -51,7 +51,7 @@ func legacySdkParse(header string) (map[string]string, error) {
 // TestBuildChallenge_GoldenString verifica o valor byte-a-byte esperado.
 func TestBuildChallenge_GoldenString(t *testing.T) {
 	got := middleware.BuildChallenge(testVaultHost, testTenantID)
-	want := `Bearer authorization="https://lab-dilson:13000/a0c2a3f5-e1b3-4d6a-9c41-2cdd1f2c7e0f", resource="https://lab-dilson"`
+	want := `Bearer authorization="https://lab-dilson:13000/a0c2a3f5-e1b3-4d6a-9c41-2cdd1f2c7e0f", resource="https://lab-dilson:13000"`
 	if got != want {
 		t.Fatalf("header divergiu do canônico:\n got:  %s\n want: %s", got, want)
 	}
@@ -105,7 +105,7 @@ func TestChallengeMiddleware_SurviveLegacySdkParser(t *testing.T) {
 	if _, ok := attrs["authorization"]; !ok {
 		t.Fatal("campo 'authorization' ausente — SDK legado não consegue extrair tenant/authority")
 	}
-	if attrs["resource"] != "https://lab-dilson" {
+	if attrs["resource"] != "https://lab-dilson:13000" {
 		t.Fatalf("campo 'resource' errado: %q", attrs["resource"])
 	}
 }
@@ -166,6 +166,22 @@ func TestBuildChallenge_NoBareBearer(t *testing.T) {
 		if strings.EqualFold(clean, "bearer") && i > 0 {
 			t.Fatalf("encontrado 'Bearer' solto na posição %d do header: %q", i, header)
 		}
+	}
+}
+
+// TestBuildChallenge_ResourceParentDomainWithPort — para host com subdomínio,
+// resource= usa domínio pai MAS preserva a porta: o SDK Python compara netloc
+// completo (host:porta) via endswith("."+resource); o Java compara só o host.
+func TestBuildChallenge_ResourceParentDomainWithPort(t *testing.T) {
+	got := middleware.BuildChallenge("gdr.kvemu.local:13000", testTenantID)
+	const wantResource = `resource="https://kvemu.local:13000"`
+	if !strings.Contains(got, wantResource) {
+		t.Fatalf("resource errado: quero %s em %q", wantResource, got)
+	}
+
+	// simula o check do SDK Python: request netloc termina com "."+resource netloc
+	if !strings.HasSuffix("gdr.kvemu.local:13000", "."+"kvemu.local:13000") {
+		t.Fatal("check estilo SDK Python (netloc endswith) falharia")
 	}
 }
 

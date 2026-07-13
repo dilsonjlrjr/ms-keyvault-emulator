@@ -34,6 +34,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	r.Use(chiMiddleware.RequestID)
 	r.Use(chiMiddleware.RealIP)
+	// SDKs Azure montam GET /secrets/{name}/{version} com version vazia quando
+	// querem a versão mais recente — a URL chega com barra final. O Azure real
+	// aceita as duas formas.
+	r.Use(chiMiddleware.StripSlashes)
 	r.Use(kvmsHeaders)
 	r.Use(middleware.Logger)
 

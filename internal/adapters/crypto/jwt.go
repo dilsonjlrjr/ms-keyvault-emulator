@@ -72,11 +72,15 @@ func (k *AADKey) JWKS() ([]byte, error) {
 // vaultHost ex: "vault.kvemu.local:13000", tenantID ex: "a0c2a..."
 func OIDCConfig(vaultHost, tenantID string) []byte {
 	issuer := fmt.Sprintf("https://%s/%s/v2.0", vaultHost, tenantID)
+	// MSAL exige authorization_endpoint no discovery mesmo em client_credentials;
+	// o endpoint não precisa existir, só constar no JSON.
+	authorizeEP := fmt.Sprintf("https://%s/%s/oauth2/v2.0/authorize", vaultHost, tenantID)
 	tokenEP := fmt.Sprintf("https://%s/%s/oauth2/v2.0/token", vaultHost, tenantID)
 	jwksEP := fmt.Sprintf("https://%s/%s/discovery/v2.0/keys", vaultHost, tenantID)
 
 	doc := map[string]any{
 		"issuer":                                issuer,
+		"authorization_endpoint":                authorizeEP,
 		"token_endpoint":                        tokenEP,
 		"jwks_uri":                              jwksEP,
 		"response_modes_supported":              []string{"query", "fragment", "form_post"},
