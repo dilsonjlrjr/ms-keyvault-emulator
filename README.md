@@ -48,6 +48,8 @@ docker compose -f deploy/docker-compose.yml up
 | 2.7.18 | 4.5.0 | ✅ |
 | 3.4.5 | 5.21.0 | ✅ |
 
+Also verified: **official Python SDK** (`azure-identity` 1.25.3 + `azure-keyvault-secrets`, MSAL `client_credentials`). Client-side requirements: pass the emulator CA via the `connection_verify` kwarg (azure-identity ignores `REQUESTS_CA_BUNDLE`/`SSL_CERT_FILE`), set `disable_instance_discovery=True` on the credential, and point `AZURE_AUTHORITY_HOST` to `https://<vault-host>`.
+
 ### Local Machine Setup (for client applications)
 
 #### 1. Download CA Certificate
@@ -156,6 +158,8 @@ docker compose -f deploy/docker-compose.yml up
 | 2.7.9 | 4.5.0 | ✅ |
 | 2.7.18 | 4.5.0 | ✅ |
 | 3.4.5 | 5.21.0 | ✅ |
+
+Também verificado: **SDK oficial Python** (`azure-identity` 1.25.3 + `azure-keyvault-secrets`, MSAL `client_credentials`). Requisitos no cliente: passar o CA do emulador via kwarg `connection_verify` (azure-identity ignora `REQUESTS_CA_BUNDLE`/`SSL_CERT_FILE`), definir `disable_instance_discovery=True` na credencial e apontar `AZURE_AUTHORITY_HOST` para `https://<vault-host>`.
 
 ### Configuração da Máquina Local (para aplicações cliente)
 
